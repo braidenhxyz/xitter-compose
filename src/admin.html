@@ -1065,14 +1065,14 @@ const RENDER = {
 			const box = $("#aiPending");
 			if (!imports.length) { box.textContent = "None."; return; }
 			box.className = "";
-			box.innerHTML = imports.map((i) => '<div class="row" style="margin:6px 0;justify-content:space-between"><span><a href="#user/' + esc(i.user_id) + '">@' + esc(i.screen_name) + "</a> " +
+			box.innerHTML = '<div class="field"><label>Reason when declining (the account sees it; optional)</label><input id="aiReason" maxlength="300"></div>' + imports.map((i) => '<div class="row" style="margin:6px 0;justify-content:space-between"><span><a href="#user/' + esc(i.user_id) + '">@' + esc(i.screen_name) + "</a> " +
 				'<span class="dim small">joined ' + esc(when(i.created_at)) + ", " + Math.max(1, Math.round(i.size / 1048576)) + " MB" + (i.options.replies ? ", with replies" : "") + (i.options.profile ? ", with profile" : "") + ", asked " + esc(when(i.updated_at)) + "</span></span>" +
 				'<span class="row"><button class="btn primary" data-ai-approve="' + esc(i.user_id) + '">Approve</button><button class="btn danger" data-ai-decline="' + esc(i.user_id) + '">Decline</button></span></div>').join("");
 			box.querySelectorAll("[data-ai-approve]").forEach((b) => b.onclick = () => act(() => api("decideArchiveImport", { userId: b.dataset.aiApprove, approve: true }), "Approved; the import starts").then(route));
-			box.querySelectorAll("[data-ai-decline]").forEach((b) => b.onclick = () => {
-				const reason = prompt("Why? The account sees this (optional).");
-				if (reason === null) return;
-				act(() => api("decideArchiveImport", { userId: b.dataset.aiDecline, approve: false, reason }), "Declined; the archive was deleted").then(route);
+			// no prompt(): embedded browsers answer it without showing anything (ask() above)
+			box.querySelectorAll("[data-ai-decline]").forEach((b) => b.onclick = async () => {
+				if (!(await ask("Decline this import? Its archive is deleted."))) return;
+				act(() => api("decideArchiveImport", { userId: b.dataset.aiDecline, approve: false, reason: $("#aiReason").value }), "Declined; the archive was deleted").then(route);
 			});
 		}, () => { $("#aiPending").textContent = "Couldn't load the imports."; });
 		if (!admin) return;
