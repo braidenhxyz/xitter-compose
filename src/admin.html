@@ -138,6 +138,28 @@
 	.notice { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); font-weight: 500; }
 	.ask { backdrop-filter: blur(3px); }
 	.ask .box { box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+	[hidden] { display: none !important; }
+	.navtoggle { display: none !important; }
+	.tabs { scrollbar-width: none; }
+	.tabs::-webkit-scrollbar { display: none; }
+	nav .logo { margin-bottom: 14px; }
+	.navgroup { display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
+	.navgroup + .navgroup { border-top: 1px solid var(--line); }
+	.navlabel { padding: 8px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #5f6773; }
+	nav > button { margin-top: 2px; }
+	nav .who { margin-top: auto; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); color: var(--text); font-size: 13px; font-weight: 600; }
+	nav .who::before { content: "account_circle"; font-family: "Material Symbols Outlined"; font-size: 20px; vertical-align: -5px; margin-right: 6px; color: var(--blue); font-weight: 400; }
+	main > h1 { padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+	.tabs { display: flex; gap: 4px; margin: -8px 0 22px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
+	.tabs button { border: 0; background: none; color: var(--dim); font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+	.tabs button:hover { color: var(--text); }
+	.tabs button.on { background: var(--blue); color: #fff; }
+	.box { transition: border-color .15s; }
+	.box:hover { border-color: #313844; }
+	.card { transition: transform .15s, border-color .15s; }
+	.card:hover { transform: translateY(-1px); border-color: #313844; }
+	label.row input[type="checkbox"] { accent-color: var(--blue); width: 16px; height: 16px; }
+	.empty { text-align: center; padding: 48px 0; }
 	::-webkit-scrollbar { width: 10px; height: 10px; }
 	::-webkit-scrollbar-thumb { background: #2a3038; border-radius: 10px; border: 2px solid var(--bg); }
 	@media (max-width: 760px) {
@@ -145,6 +167,14 @@
 		nav { flex-direction: row; flex-wrap: wrap; align-items: center; height: auto; background: var(--panel); padding: 10px 12px; }
 		nav button { width: auto; padding: 7px 10px; font-size: 13.5px; }
 		nav button.on { box-shadow: none; }
+		.navgroup { flex-direction: row; flex-wrap: wrap; padding: 0; border: 0 !important; }
+		.navtoggle { display: flex !important; width: 100% !important; color: var(--text) !important; font-weight: 600; }
+		.navtoggle::after { content: "expand_more"; font-family: "Material Symbols Outlined"; margin-left: auto; font-size: 20px; transition: transform .15s; }
+		nav.open .navtoggle::after { transform: rotate(180deg); }
+		nav:not(.open) .navgroup, nav:not(.open) > button:not(.navtoggle) { display: none; }
+		nav.open .navgroup { margin-top: 4px; }
+		.navlabel { display: none; }
+		.tabs { width: 100%; }
 		main { padding: 18px 16px 64px; }
 		h1 { font-size: 22px; }
 		.cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -1484,6 +1514,58 @@ async function renderUser(main, id) {
 	main.querySelectorAll("[data-unaff]").forEach((b) => b.onclick = () => act(() => api("removeAffiliate", { orgId: id, userId: b.dataset.unaff }), "Removed").then(again));
 }
 
+// ── this instance only, not upstream: the sidebar in sections, and Settings
+// in tabs. Pages and boxes not named here still show, under "More" and
+// "Other", so new ones from upstream don't go missing.
+const NAV_GROUPS = [
+	["", ["overview"]],
+	["Moderation", ["reports", "appeals", "automod", "users", "orgs", "posts", "articles", "media"]],
+	["Community", ["invites", "badges", "stickers", "hashflags", "topics", "cards", "email"]],
+	["Instance", ["settings", "extras", "switches", "federation", "apps"]],
+	["System", ["errors", "permissions", "security", "backups", "client", "audit"]],
+];
+function navGroups() {
+	const shown = Object.entries(PAGES).filter(([, p]) => !p.needs || can(p.needs));
+	const named = new Set(NAV_GROUPS.flatMap(([, keys]) => keys));
+	const button = ([k, p]) => '<button data-page="' + k + '"><span class="icon">' + p.icon + "</span>" + esc(p.title) + "</button>";
+	return NAV_GROUPS.concat([["More", shown.filter(([k]) => !named.has(k)).map(([k]) => k)]]).map(([label, keys]) => {
+		const items = keys.map((k) => shown.find(([x]) => x === k)).filter(Boolean);
+		return items.length ? '<div class="navgroup">' + (label ? '<div class="navlabel">' + esc(label) + "</div>" : "") + items.map(button).join("") + "</div>" : "";
+	}).join("");
+}
+
+const SETTINGS_TABS = [
+	["General", ["Sign-up", "Name and source", "Announcement", "Rules", "Pinned post", "Maintenance"]],
+	["Features and limits", ["Features", "Upload limits", "Rate limits", "Post length", "Import from X"]],
+	["Moderation", ["Blocked phrases", "Blocked names", "Automod", "Trends"]],
+	["Branding", ["Logo and icons"]],
+];
+const settingsPage = RENDER.settings;
+RENDER.settings = async function (main) {
+	await settingsPage.call(this, main);
+	// each box by its heading; the logo section is a heading, a note and a grid
+	const parts = [];
+	main.querySelectorAll(":scope > .grid2:first-of-type > .box").forEach((box) => parts.push([box.querySelector("h2")?.textContent.trim() ?? "", [box]]));
+	const logo = [...main.querySelectorAll(":scope > h2")].find((h) => h.textContent.trim() === "Logo and icons");
+	if (logo) parts.push(["Logo and icons", [logo, logo.nextElementSibling, logo.nextElementSibling?.nextElementSibling].filter(Boolean)]);
+	const tabOf = (title) => (SETTINGS_TABS.find(([, titles]) => titles.includes(title)) ?? ["Other"])[0];
+	const tabs = SETTINGS_TABS.map(([t]) => t).concat(parts.some(([title]) => tabOf(title) === "Other") ? ["Other"] : []);
+	let current = sessionStorage.getItem("settingsTab");
+	if (!tabs.includes(current)) current = tabs[0];
+	const bar = document.createElement("div");
+	bar.className = "tabs";
+	bar.innerHTML = tabs.map((t) => '<button data-stab="' + esc(t) + '">' + esc(t) + "</button>").join("");
+	main.querySelector("h1").after(bar);
+	const show = (tab) => {
+		current = tab;
+		sessionStorage.setItem("settingsTab", tab);
+		bar.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.stab === tab));
+		for (const [title, els] of parts) for (const el of els) el.hidden = tabOf(title) !== tab;
+	};
+	bar.querySelectorAll("button").forEach((b) => b.onclick = () => show(b.dataset.stab));
+	show(current);
+};
+
 (async function start() {
 	try {
 		me = await api("me");
@@ -1492,11 +1574,16 @@ async function renderUser(main, id) {
 		$("#main").innerHTML = '<div class="empty">' + esc(e.message) + ' <a href="/home">Back to {{instance}}</a></div>';
 		return;
 	}
-	$("#nav").insertAdjacentHTML("beforeend", Object.entries(PAGES).filter(([, p]) => !p.needs || can(p.needs)).map(([k, p]) => '<button data-page="' + k + '"><span class="icon">' + p.icon + "</span>" + esc(p.title) + "</button>").join("") +
+	$("#nav").insertAdjacentHTML("beforeend", '<button class="navtoggle" type="button" aria-expanded="false"><span class="icon">menu</span><span class="navcurrent">Menu</span></button>' + navGroups() +
 		(me.superadmin_home ? '<button onclick="location.href=\'/federation/superadmin\'"><span class="icon">shield_person</span>Superadmin</button>' : "") +
 		'<button onclick="location.href=\'/home\'"><span class="icon">arrow_back</span>Back to {{instance}}</button>' +
-		'<div class="who">@' + esc(me.screen_name) + " · " + esc(me.superadmin ? "superadmin" : me.role) + "</div>");
-	document.querySelectorAll("nav [data-page]").forEach((b) => b.onclick = () => go(b.dataset.page));
+		'<div class="who">@' + esc(me.screen_name) + " · " + esc(me.superadmin ? "superadmin" : me.id === me.owner_id ? "owner" : me.role) + "</div>");
+	document.querySelectorAll("nav [data-page]").forEach((b) => b.onclick = () => { go(b.dataset.page); $("#nav").classList.remove("open"); $(".navtoggle").setAttribute("aria-expanded", "false"); });
+	// phones: the menu folds away behind its current page (this instance only)
+	$(".navtoggle").onclick = () => { const open = $("#nav").classList.toggle("open"); $(".navtoggle").setAttribute("aria-expanded", String(open)); };
+	const label = () => { const on = $("nav button.on"); $(".navcurrent").textContent = on ? on.textContent.replace(on.querySelector(".icon")?.textContent ?? "", "").replace(/\d+$/, "").trim() : "Menu"; };
+	window.addEventListener("hashchange", () => setTimeout(label));
+	setTimeout(label);
 	refreshCounts();
 	route();
 })();
