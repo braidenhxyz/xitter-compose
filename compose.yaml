@@ -61,6 +61,23 @@ services:
       timeout: 5s
       retries: 20
 
+  # this instance only: a fox every hour (scripts/fox-bot.ts). Put the bot
+  # account's write token in .env as FOX_BOT_TOKEN, then
+  #   docker compose --profile foxbot up -d
+  foxbot:
+    profiles: ["foxbot"]
+    build: .
+    restart: unless-stopped
+    command: ["bun", "scripts/fox-bot.ts"]
+    environment:
+      FOX_BOT_TOKEN: ${FOX_BOT_TOKEN:-}
+      FOX_BOT_EVERY_MINUTES: ${FOX_BOT_EVERY_MINUTES:-60}
+      XITTER_URL: http://app:3000
+    healthcheck:
+      disable: true
+    depends_on:
+      - app
+
   # Juicebox realm for chat passcode recovery (see deploy/juicebox)
   realm:
     profiles: ["keybackup"]
