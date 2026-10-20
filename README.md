@@ -81,6 +81,10 @@ copy during setup, and it stays on that machine.
 - Previews when a public post or profile is shared in other apps (Discord,
   Slack, iMessage…): OpenGraph and Twitter card tags and oEmbed, for active,
   unprotected accounts only. Admin > Settings > Features switches them off
+- Dim (X dropped it from Display settings) and custom themes, including
+  gradients, per-token colours, and Google Fonts served from this instance;
+  Settings > Display or /account/theme. Organisation profile decor keeps its
+  own look on the profile column.
 - Staff labels under posts, as X shows them: Visibility limited (also kept out
   of For you and search), Misleading, Stay informed, Get the latest, Legally
   required notice; staff can also set the counts a post or profile shows
