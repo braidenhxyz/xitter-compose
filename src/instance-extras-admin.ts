@@ -77,12 +77,14 @@ export const extrasActions: Record<string, Action> = {
 			const welcome = { enabled: on(w.enabled, "new accounts get a welcome"), from: text(w.from, 51).trim().replace(/^@/, ""), text: text(w.text, 2000) };
 			const landing = { enabled: on(l.enabled, "to use the landing page"), tagline: text(l.tagline, 140).trim(), about: text(l.about, 1500).trim(), posts: on(l.posts, "to show recent posts") };
 			const local_explore = { enabled: on(x.enabled, "Explore shows this instance's posts") };
+			const stats = { enabled: on(((b.stats ?? {}) as Record<string, unknown>).enabled, "the stats page is open") };
 			if (welcome.from && !(await sql`select 1 from users where lower(screen_name) = ${welcome.from.toLowerCase()} and instance is null and role is not null`).length)
 				throw new AdminError(`@${welcome.from} isn't a staff account here.`);
 			await saveExtra("welcome", welcome);
 			await saveExtra("landing", landing);
 			await saveExtra("local_explore", local_explore);
-			await audit(a, "save_instance_extras", null, { welcome: welcome.enabled, landing: landing.enabled, local_explore: local_explore.enabled });
+			await saveExtra("stats", stats);
+			await audit(a, "save_instance_extras", null, { welcome: welcome.enabled, landing: landing.enabled, local_explore: local_explore.enabled, stats: stats.enabled });
 			return {};
 		},
 	},

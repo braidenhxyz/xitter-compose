@@ -154,6 +154,8 @@
 	.tabs button { border: 0; background: none; color: var(--dim); font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
 	.tabs button:hover { color: var(--text); }
 	.tabs button.on { background: var(--blue); color: #fff; }
+	.tabs button[data-count]:not([data-count=""])::after { content: attr(data-count); margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 11px; }
+	.tabs button.on[data-count]:not([data-count=""])::after { background: #fff; color: var(--blue); }
 	.box { transition: border-color .15s; }
 	.box:hover { border-color: #313844; }
 	.card { transition: transform .15s, border-color .15s; }
@@ -1304,6 +1306,8 @@ RENDER.extras = async function (main) {
 		check("xlPosts", l.posts, "Show a few recent public posts from this instance's accounts") + "</div>" +
 		'<div class="box"><h2>Explore</h2>' + check("xeOn", x.local_explore.enabled, "Show the latest posts from this instance's own accounts at the top of Explore") +
 		'<p class="dim small">"Show more" searches filter:local, which also works in the search box.</p></div>' +
+		'<div class="box"><h2>Stats page</h2>' + check("xsOn", x.stats?.enabled !== false, "Open /stats to everyone: accounts, posts, hashtags and connected instances") +
+		'<p class="dim small"><a href="/stats" target="_blank">Open it</a>. The landing page links to it while it\'s on.</p></div>' +
 		'</div><button class="btn primary" id="xSave" style="margin-top:12px">Save</button>' +
 		'<h2 style="margin-top:28px">Owner</h2>' +
 		(!owner.you
@@ -1322,6 +1326,7 @@ RENDER.extras = async function (main) {
 		welcome: { enabled: $("#xwOn").checked, from: $("#xwFrom").value, text: $("#xwText").value },
 		landing: { enabled: $("#xlOn").checked, tagline: $("#xlTag").value, about: $("#xlAbout").value, posts: $("#xlPosts").checked },
 		local_explore: { enabled: $("#xeOn").checked },
+		stats: { enabled: $("#xsOn").checked },
 	}), "Saved").then(route);
 	if (!owner.you) return;
 	$("#ojDate").max = new Date().toISOString().slice(0, 10);
@@ -1540,6 +1545,20 @@ const SETTINGS_TABS = [
 	["Moderation", ["Blocked phrases", "Blocked names", "Automod", "Trends"]],
 	["Branding", ["Logo and icons"]],
 ];
+// imports waiting for staff show as a count on Settings, like open reports do
+const upstreamCounts = refreshCounts;
+refreshCounts = async function () {
+	await upstreamCounts();
+	if (!can("archiveImports")) return;
+	const r = await api("archiveImports").catch(() => null);
+	const b = $('nav [data-page="settings"]');
+	if (!r || !b) return;
+	b.querySelector(".count")?.remove();
+	if (r.imports.length) b.insertAdjacentHTML("beforeend", '<span class="count" title="Imports waiting for approval">' + r.imports.length + "</span>");
+	const tab = $('[data-stab="Features and limits"]');
+	if (tab) tab.dataset.count = r.imports.length || "";
+};
+
 const settingsPage = RENDER.settings;
 RENDER.settings = async function (main) {
 	await settingsPage.call(this, main);
@@ -1564,6 +1583,8 @@ RENDER.settings = async function (main) {
 	};
 	bar.querySelectorAll("button").forEach((b) => b.onclick = () => show(b.dataset.stab));
 	show(current);
+	// an import approved or declined here: the counts follow
+	refreshCounts();
 };
 
 (async function start() {

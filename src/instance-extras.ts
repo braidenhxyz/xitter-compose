@@ -12,6 +12,8 @@
 // - From this instance: the top of Explore shows the latest posts by this
 //   instance's own accounts, and "Show more" searches all of them
 //   ("filter:local", search.ts).
+// - Stats: /stats, open to anyone: accounts, posts, hashtags this week and
+//   the instances this one federates with, from a cache a few minutes old.
 // - Owner: one admin is the instance's owner, saved here rather than worked out
 //   as the longest-standing admin like upstream does (admin.ts ownerId), so
 //   editing join dates can't move it. Only the owner changes join dates and
@@ -32,6 +34,7 @@ export type Extras = {
 	landing: { enabled: boolean; tagline: string; about: string; posts: boolean };
 	local_explore: { enabled: boolean };
 	owner: { id: string };
+	stats: { enabled: boolean };
 };
 
 const DEFAULTS: Extras = {
@@ -43,6 +46,7 @@ const DEFAULTS: Extras = {
 	landing: { enabled: true, tagline: "", about: "", posts: true },
 	local_explore: { enabled: true },
 	owner: { id: "" },
+	stats: { enabled: true },
 };
 
 let current: Extras = structuredClone(DEFAULTS);
@@ -234,13 +238,133 @@ ${scheme === "auto" ? `<meta name="theme-color" content="#000000" media="(prefer
 			${closed ? "" : `<a class="btn primary" href="/?app=signup">Create account</a>`}
 			<a class="btn${closed ? " primary" : ""}" href="/?app=login">Sign in</a>
 		</div>
-		<p class="small">${s.signup_mode === "invite" ? "Sign-up needs an invite code. " : closed ? "Sign-up is closed right now. " : ""}<a href="/rules">Rules</a> · <a href="${esc(s.source_url)}">Source</a></p>
+		<p class="small">${s.signup_mode === "invite" ? "Sign-up needs an invite code. " : closed ? "Sign-up is closed right now. " : ""}<a href="/rules">Rules</a>${current.stats.enabled ? ` · <a href="/stats">Stats</a>` : ""} · <a href="${esc(s.source_url)}">Source</a></p>
 	</div>
 	${feed}
 </main>
 </body>
 </html>`;
 	return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+// ── stats ──────────────────────────────────────────────────────────────────
+
+type Stats = {
+	accounts: number; joined_week: number; posts: number; posts_week: number; posters_week: number;
+	days: { day: string; posts: number }[]; weeks: { week: string; joined: number }[];
+	tags: { tag: string; posts: number }[]; peers: { id: string; name: string; accounts: number }[];
+};
+let statsCache: { at: number; data: Promise<Stats> } | undefined;
+
+async function readStats(): Promise<Stats> {
+	const [{ cachedTrends }, { peers }] = await Promise.all([import("./search"), import("./federation")]);
+	const local = sql`u.instance is null and u.status <> 'suspended' and u.deactivated_at is null`;
+	const [[c], days, weeks, tags, counts] = await Promise.all([
+		sql`select (select count(*)::int from users u where ${local}) as accounts,
+			(select count(*)::int from users u where ${local} and u.created_at > now() - interval '7 days') as joined_week,
+			(select count(*)::int from posts p join users u on u.id = p.user_id where ${local}) as posts,
+			(select count(*)::int from posts p join users u on u.id = p.user_id where ${local} and p.created_at > now() - interval '7 days') as posts_week,
+			(select count(distinct p.user_id)::int from posts p join users u on u.id = p.user_id where ${local} and p.created_at > now() - interval '7 days') as posters_week`,
+		sql`select to_char(d, 'YYYY-MM-DD') as day, (select count(*)::int from posts p join users u on u.id = p.user_id
+				where ${local} and p.created_at >= d and p.created_at < d + interval '1 day') as posts
+			from generate_series(current_date - 13, current_date, interval '1 day') d order by d`,
+		sql`select to_char(w, 'YYYY-MM-DD') as week, (select count(*)::int from users u where ${local} and u.created_at >= w and u.created_at < w + interval '7 days') as joined
+			from generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()), interval '7 days') w order by w`,
+		cachedTrends(7, 10, {}).catch(() => []),
+		sql`select instance, count(*)::int as accounts from users where instance is not null group by instance`,
+	]);
+	const known = new Map(counts.map((r: any) => [r.instance, r.accounts]));
+	const list = peers().map((p) => ({ id: p.id, name: p.name || p.id, accounts: (known.get(p.id) as number) ?? 0 })).sort((a, b) => b.accounts - a.accounts || a.name.localeCompare(b.name));
+	return { ...(c as any), days: [...days] as any, weeks: [...weeks] as any, tags, peers: list };
+}
+
+const n = (x: number) => x.toLocaleString("en-US");
+function bars(rows: { label: string; value: number }[], what: string) {
+	const max = Math.max(1, ...rows.map((r) => r.value));
+	return `<div class="bars">${rows.map((r) => `<div title="${esc(r.label)}: ${n(r.value)} ${what}" style="height:${Math.max(2, (r.value / max) * 100)}%"></div>`).join("")}</div>
+	<div class="axis"><span>${esc(rows[0]?.label ?? "")}</span><span>${esc(rows.at(-1)?.label ?? "")}</span></div>`;
+}
+
+// /stats (server.ts); undefined when an admin turned it off
+export async function statsPage(): Promise<Response | undefined> {
+	if (!current.stats.enabled) return undefined;
+	if (!statsCache || Date.now() - statsCache.at > 5 * 60_000) {
+		const data = readStats();
+		statsCache = { at: Date.now(), data };
+		data.catch(() => (statsCache = undefined));
+	}
+	const st = await statsCache.data;
+	const name = settings().instance_name;
+	const short = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+	const tile = (label: string, value: number, note = "") => `<div class="tile"><span>${esc(label)}</span><b>${n(value)}</b>${note ? `<em>${esc(note)}</em>` : ""}</div>`;
+	const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stats · ${esc(name)}</title>
+<meta name="description" content="${esc(`${n(st.accounts)} accounts and ${n(st.posts_week)} posts this week on ${name}`)}">
+<meta property="og:title" content="${esc(`${name} in numbers`)}">
+<meta property="og:description" content="${esc(`${n(st.accounts)} accounts · ${n(st.posts_week)} posts this week · ${n(st.peers.length)} connected instances`)}">
+<link rel="icon" type="image/png" href="/public/favicon.png">
+<style>
+	:root { --bg: #000; --fg: #e7e9ea; --dim: #71767b; --line: #2f3336; --card: #16181c; --accent: #1d9bf0; }
+	@media (prefers-color-scheme: light) { :root { --bg: #fff; --fg: #0f1419; --dim: #536471; --line: #eff3f4; --card: #f7f9f9; } }
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 TwitterChirp, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+	main { max-width: 960px; margin: 0 auto; padding: 40px 16px 64px; }
+	a { color: var(--accent); text-decoration: none; }
+	header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+	h1 { margin: 0; font-size: clamp(28px, 5vw, 40px); font-weight: 800; letter-spacing: -.02em; }
+	h2 { font-size: 17px; margin: 0 0 12px; }
+	.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+	.tile, .box { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
+	.tile span { color: var(--dim); font-size: 13px; }
+	@media (max-width: 400px) { .tile { padding: 14px; } .tile b { font-size: 24px !important; } }
+	.tile b { display: block; font-size: 30px; font-weight: 800; letter-spacing: -.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+	.tile em { color: var(--dim); font-size: 13px; font-style: normal; }
+	.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
+	.bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; }
+	.bars div { flex: 1; background: var(--accent); border-radius: 4px 4px 1px 1px; opacity: .9; }
+	.axis { display: flex; justify-content: space-between; color: var(--dim); font-size: 12px; margin-top: 6px; }
+	ol, ul { margin: 0; padding: 0; list-style: none; }
+	li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+	li:last-child { border-bottom: 0; }
+	li span { color: var(--dim); white-space: nowrap; }
+	li a, li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+	.empty { color: var(--dim); }
+	footer { color: var(--dim); font-size: 13px; margin-top: 20px; }
+</style>
+</head>
+<body>
+<main>
+	<header><h1>${esc(name)} in numbers</h1><a href="/">${esc(name)} →</a></header>
+	<div class="tiles">
+		${tile("Accounts", st.accounts, st.joined_week ? `+${n(st.joined_week)} this week` : "")}
+		${tile("Posts", st.posts)}
+		${tile("Posts this week", st.posts_week)}
+		${tile("People posting this week", st.posters_week)}
+		${tile("Connected instances", st.peers.length)}
+	</div>
+	<div class="grid">
+		<section class="box"><h2>Posts a day</h2>${bars(st.days.map((d) => ({ label: short(d.day), value: d.posts })), "posts")}</section>
+		<section class="box"><h2>New accounts a week</h2>${bars(st.weeks.map((w) => ({ label: short(w.week), value: w.joined })), "new accounts")}</section>
+	</div>
+	<div class="grid">
+		<section class="box"><h2>Busiest hashtags this week</h2>${
+			st.tags.length ? `<ol>${st.tags.map((t) => `<li><b>${esc(t.tag)}</b><span>${n(t.posts)} ${t.posts === 1 ? "post" : "posts"}</span></li>`).join("")}</ol>` : `<p class="empty">No hashtags trending yet.</p>`
+		}</section>
+		<section class="box"><h2>Instances ${esc(name)} federates with</h2>${
+			st.peers.length
+				? `<ul>${st.peers.map((p) => `<li><a href="https://${esc(p.id)}" rel="noopener">${esc(p.name)}</a><span>${p.accounts ? `${n(p.accounts)} ${p.accounts === 1 ? "account" : "accounts"} seen here` : esc(p.id)}</span></li>`).join("")}</ul>`
+				: `<p class="empty">This instance doesn't federate with others.</p>`
+		}</section>
+	</div>
+	<footer>Counts are this instance's own accounts, without suspended or deactivated ones, and update every few minutes.</footer>
+</main>
+</body>
+</html>`;
+	return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
 }
 
 // ── from this instance, on Explore ─────────────────────────────────────────

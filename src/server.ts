@@ -334,6 +334,8 @@ async function route(req: Request): Promise<Response | undefined> {
 		return handleLogin(req);
 	}
 	if (p === "/rules" || p === "/tos" || p === "/privacy") return rulesPage();
+	// this instance only (instance-extras.ts)
+	if (p === "/stats") return (await extras.statsPage()) ?? new Response("not found", { status: 404 });
 	// X's sign-in screens (jf.x.com), answered here
 	// inside the signed-in client the same screens come through /i/jfapi
 	if (p.startsWith("/onboarding/web") || p.startsWith("/i/jfapi/onboarding/web")) {
