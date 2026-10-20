@@ -28,6 +28,7 @@ import { CardError, deleteCard, listCards, saveCard } from "./explore-cards";
 import { mailEnabled, mailFrom, sendMail } from "./mail";
 import { mailDigests } from "./mail-digest";
 import { toolActions } from "./admin-tools";
+import { extrasActions } from "./instance-extras-admin";
 import { stickerActions } from "./stickers";
 import { hashflagActions } from "./hashflags";
 import { switchActions } from "./feature-switches";
@@ -863,6 +864,8 @@ Object.assign(ACTIONS, toolActions);
 Object.assign(ACTIONS, stickerActions);
 Object.assign(ACTIONS, hashflagActions);
 Object.assign(ACTIONS, switchActions);
+// this instance only, not upstream (instance-extras-admin.ts)
+Object.assign(ACTIONS, extrasActions);
 
 // every permission names real actions, and its default is the role written on them
 for (const [key, p] of Object.entries(PERMISSIONS))

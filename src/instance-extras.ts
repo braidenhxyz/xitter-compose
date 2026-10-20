@@ -1,6 +1,7 @@
 // This instance's own extras, kept out of upstream's files so merging upstream
 // stays easy: each is hooked in with a line or two (server.ts, invites.ts,
-// graphql.ts, search.ts, tidy.ts). An admin sets them at /account/extras.
+// graphql.ts, search.ts, admin.ts, admin.html). An admin sets them in the
+// admin panel, Instance extras.
 //
 // - Welcome: a message to each new account, shown as a card on its first
 //   visit (the staff-message popup, automod-notice.ts) and kept in its Staff
@@ -12,20 +13,17 @@
 //   instance's own accounts, and "Show more" searches all of them
 //   ("filter:local", search.ts).
 
-import { esc } from "./account-page";
-import { accountPage } from "./account-page";
+// what pulls in half the server (posts, search, the client shell) is
+// imported where it's used, so this file can load before or after any of it
 import type { Viewer } from "./auth";
 import { PUBLIC_ORIGIN } from "./config";
 import { sql } from "./db";
 import { newId } from "./ids";
-import { tweetEntry } from "./model";
-import { postsByIds } from "./posts";
-import { searchPosts } from "./search";
 import { settings } from "./settings";
-import { shell } from "./shell";
-import type { MenuLink } from "./tidy";
 
-type Extras = {
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+export type Extras = {
 	welcome: { enabled: boolean; from: string; text: string };
 	landing: { enabled: boolean; tagline: string; about: string; posts: boolean };
 	local_explore: { enabled: boolean };
@@ -51,7 +49,9 @@ export async function loadExtras() {
 	current = next;
 }
 
-async function save<K extends keyof Extras>(key: K, value: Extras[K]) {
+export const extras = () => current;
+
+export async function saveExtra<K extends keyof Extras>(key: K, value: Extras[K]) {
 	await sql`insert into instance_extras (key, value) values (${key}, ${JSON.stringify(value)}::text::jsonb) on conflict (key) do update set value = excluded.value`;
 	current = { ...current, [key]: value };
 }
@@ -110,7 +110,7 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 	if (!l.enabled) return undefined;
 	const app = url.searchParams.get("app");
 	if (app !== null) {
-		const page = shell(null);
+		const page = (await import("./shell")).shell(null);
 		if (!page) return undefined;
 		const flow = app === "signup" ? "signup" : app === "login" ? "login" : null;
 		return new Response(flow ? page.replace("</body>", `${OPEN_SCRIPT(flow)}</body>`) : page, {
@@ -203,6 +203,7 @@ export const LOCAL_QUERY = "filter:local -filter:replies";
 // the module at the top of Explore (graphql.ts explorePage)
 export async function localExploreEntry(viewer: Viewer, sortIndex: string) {
 	if (!current.local_explore.enabled) return undefined;
+	const [{ searchPosts }, { postsByIds }, { tweetEntry }] = await Promise.all([import("./search"), import("./posts"), import("./model")]);
 	const ids = await searchPosts(LOCAL_QUERY, { viewerId: viewer.id, top: false, limit: 5 });
 	if (!ids.length) return undefined;
 	const posts = await postsByIds(viewer.id, ids);
@@ -225,66 +226,4 @@ export async function localExploreEntry(viewer: Viewer, sortIndex: string) {
 			items,
 		},
 	};
-}
-
-// ── the admin page ─────────────────────────────────────────────────────────
-
-const GEAR = "M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58-1.92-3.32-2.39.96a7 7 0 0 0-1.62-.94L14.88 3.6h-3.84l-.36 2.58a7 7 0 0 0-1.62.94l-2.39-.96-1.92 3.32 2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58 1.92 3.32 2.39-.96c.5.39 1.04.7 1.62.94l.36 2.58h3.84l.36-2.58a7 7 0 0 0 1.62-.94l2.39.96 1.92-3.32-2.03-1.58ZM12.96 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2Z";
-
-// admins get the page in their settings (tidy.ts menuLinks)
-export async function extrasLinks(userId: string): Promise<MenuLink[]> {
-	const [u] = await sql`select role from users where id = ${userId}::bigint and instance is null`;
-	if (u?.role !== "admin") return [];
-	return [{ href: "/account/extras", text: "Instance extras", description: "This instance's welcome message, landing page and Explore section.", icon: GEAR, where: "settings" }];
-}
-
-const check = (on: boolean) => (on ? " checked" : "");
-
-export async function extrasRoute(req: Request, viewer: Viewer): Promise<Response> {
-	if (viewer.role !== "admin" || viewer.instance) return accountPage({ req, viewer, title: "Instance extras", status: 403, body: `<h1>Instance extras</h1><p class="dim">Only admins can change these.</p>` });
-	let note = "";
-	if (req.method === "POST") {
-		const f = await req.formData().catch(() => undefined);
-		const get = (k: string) => String(f?.get(k) ?? "");
-		if (get("csrf") !== viewer.csrf) note = `<p class="error">That form is out of date. Try again.</p>`;
-		else {
-			await save("welcome", { enabled: get("welcome") === "1", from: get("from").trim().replace(/^@/, "").slice(0, 50), text: get("text").replace(/\r\n/g, "\n").slice(0, 2000) });
-			await save("landing", { enabled: get("landing") === "1", tagline: get("tagline").trim().slice(0, 140), about: get("about").replace(/\r\n/g, "\n").trim().slice(0, 1500), posts: get("posts") === "1" });
-			await save("local_explore", { enabled: get("local") === "1" });
-			note = `<div class="card success"><b>Saved</b></div>`;
-		}
-	}
-	const w = current.welcome;
-	const l = current.landing;
-	const box = "width:auto;min-height:0";
-	return accountPage({
-		req,
-		viewer,
-		title: "Instance extras",
-		body: `<h1>Instance extras</h1>
-	<p class="dim">Features this instance has that Xitter itself doesn't.</p>
-	${note}
-	<form method="post" action="/account/extras">
-	<input type="hidden" name="csrf" value="${esc(viewer.csrf)}">
-	<h2>Welcome message</h2>
-	<p class="dim">Each new account sees it as a card on its first visit, and keeps it in its Staff notices. {name}, {handle}, {instance} and {origin} are filled in.</p>
-	<label class="row" style="margin:0;color:inherit"><input type="checkbox" name="welcome" value="1" style="${box}"${check(w.enabled)}> Send new accounts a welcome</label>
-	<label for="from">From (a staff account's handle; empty for no one)</label>
-	<input id="from" name="from" value="${esc(w.from)}" placeholder="@admin">
-	<label for="text">Message</label>
-	<textarea id="text" name="text" rows="8" maxlength="2000">${esc(w.text)}</textarea>
-	<h2>Landing page</h2>
-	<p class="dim">What signed-out visitors see at the home page, in place of X's.</p>
-	<label class="row" style="margin:0;color:inherit"><input type="checkbox" name="landing" value="1" style="${box}"${check(l.enabled)}> Use this instance's own landing page</label>
-	<label for="tagline">Tagline</label>
-	<input id="tagline" name="tagline" maxlength="140" value="${esc(l.tagline)}" placeholder="A small, friendly place to post">
-	<label for="about">About (a blank line starts a new paragraph)</label>
-	<textarea id="about" name="about" rows="5" maxlength="1500">${esc(l.about)}</textarea>
-	<label class="row" style="margin:0;color:inherit"><input type="checkbox" name="posts" value="1" style="${box}"${check(l.posts)}> Show a few recent public posts from this instance's accounts</label>
-	<h2>Explore</h2>
-	<label class="row" style="margin:0;color:inherit"><input type="checkbox" name="local" value="1" style="${box}"${check(current.local_explore.enabled)}> Show the latest posts from this instance's own accounts at the top of Explore</label>
-	<button type="submit">Save</button>
-	</form>
-	<p class="dim"><a href="/?app" target="_blank">X's own signed-out page</a> stays at /?app.</p>`,
-	});
 }

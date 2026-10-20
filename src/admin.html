@@ -197,6 +197,8 @@ const PAGES = {
 	backups: { icon: "backup", title: "Backups", needs: "admin" },
 	client: { icon: "system_update", title: "Client", needs: "admin" },
 	audit: { icon: "history", title: "Audit log" },
+	// this instance only, not upstream (instance-extras.ts)
+	extras: { icon: "auto_awesome", title: "Instance extras", needs: "admin" },
 };
 
 function go(hash) { location.hash = hash; }
@@ -1194,6 +1196,31 @@ const RENDER = {
 			: '<div class="empty">Nothing yet.</div>') + "</div>";
 		$("#auditGo").onclick = () => RENDER.audit(main, { target: $("#auditWho").value.trim(), action: $("#auditAction").value, automatic: $("#auditAuto").checked });
 	},
+};
+
+// this instance only, not upstream (instance-extras.ts)
+RENDER.extras = async function (main) {
+	const { extras: x } = await api("extras");
+	const w = x.welcome, l = x.landing;
+	const check = (id, on, label) => '<label class="row" style="margin:6px 0"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + "> " + esc(label) + "</label>";
+	main.innerHTML = "<h1>Instance extras</h1>" + '<p class="dim">Features this instance has that Xitter itself doesn\'t.</p>' + '<div class="grid2">' +
+		'<div class="box"><h2>Welcome message</h2><p class="dim small">Each new account sees it as a card on its first visit, and keeps it in its Staff notices. {name}, {handle}, {instance} and {origin} are filled in.</p>' +
+		check("xwOn", w.enabled, "Send new accounts a welcome") +
+		'<div class="field"><label>From (a staff account\'s handle; empty for no one)</label><input id="xwFrom" placeholder="@admin" value="' + esc(w.from ? "@" + w.from : "") + '"></div>' +
+		'<div class="field"><label>Message</label><textarea id="xwText" maxlength="2000" style="min-height:180px">' + esc(w.text) + "</textarea></div></div>" +
+		'<div class="box"><h2>Landing page</h2><p class="dim small">What signed-out visitors see at the home page, in place of X\'s. <a href="/?app" target="_blank">X\'s own page</a> stays at /?app.</p>' +
+		check("xlOn", l.enabled, "Use this instance's own landing page") +
+		'<div class="field"><label>Tagline</label><input id="xlTag" maxlength="140" placeholder="A small, friendly place to post" value="' + esc(l.tagline) + '"></div>' +
+		'<div class="field"><label>About (a blank line starts a new paragraph)</label><textarea id="xlAbout" maxlength="1500">' + esc(l.about) + "</textarea></div>" +
+		check("xlPosts", l.posts, "Show a few recent public posts from this instance's accounts") + "</div>" +
+		'<div class="box"><h2>Explore</h2>' + check("xeOn", x.local_explore.enabled, "Show the latest posts from this instance's own accounts at the top of Explore") +
+		'<p class="dim small">"Show more" searches filter:local, which also works in the search box.</p></div>' +
+		'</div><button class="btn primary" id="xSave" style="margin-top:12px">Save</button>';
+	$("#xSave").onclick = () => act(() => api("saveExtras", {
+		welcome: { enabled: $("#xwOn").checked, from: $("#xwFrom").value, text: $("#xwText").value },
+		landing: { enabled: $("#xlOn").checked, tagline: $("#xlTag").value, about: $("#xlAbout").value, posts: $("#xlPosts").checked },
+		local_explore: { enabled: $("#xeOn").checked },
+	}), "Saved").then(route);
 };
 
 // the number of open reports beside Reports in the menu

@@ -407,7 +407,6 @@ async function route(req: Request): Promise<Response | undefined> {
 	if (p === "/account/automation" && viewer) return automationRoute(req, viewer);
 	if (p === "/account/instances" && viewer) return instancesRoute(req, viewer);
 	if ((p === "/account/import" || p === "/account/import/upload") && viewer) return importRoute(req, url, viewer);
-	if (p === "/account/extras" && viewer) return extras.extrasRoute(req, viewer);
 	if (p === "/account/decoration" && viewer) return decorationRoute(req, viewer);
 	if (p === "/account/organisation" && viewer) return orgRoute(req, viewer);
 	if (p === "/account/decor" && viewer) return decorRoute(req, viewer);
