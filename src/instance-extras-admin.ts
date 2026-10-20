@@ -4,7 +4,7 @@
 import { type Action, AdminError, audit, guard } from "./admin";
 import type { Viewer } from "./auth";
 import { sql } from "./db";
-import { extras, instanceOwner, saveExtra } from "./instance-extras";
+import { extras, instanceOwner, saveExtra, sendDigest } from "./instance-extras";
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").slice(0, max) : "");
 const on = (v: unknown, what: string) => {
@@ -41,6 +41,20 @@ export const extrasActions: Record<string, Action> = {
 			return { extras: extras(), owner: { you: a.id === owner, screen_name: o?.screen_name ?? null }, admins };
 		},
 	},
+	// the digest now, to check the webhook
+	testDigest: {
+		role: "admin",
+		run: async (a, b) => {
+			const url = typeof b.url === "string" && b.url.trim() ? b.url.trim() : extras().digest.url;
+			try {
+				await sendDigest(url);
+			} catch (e) {
+				throw new AdminError((e as Error).message);
+			}
+			await audit(a, "test_digest", null, {});
+			return {};
+		},
+	},
 	// an account's "Joined" date, on its profile and everywhere it shows
 	ownerJoinDate: {
 		role: "admin",
@@ -75,10 +89,17 @@ export const extrasActions: Record<string, Action> = {
 			const l = (b.landing ?? {}) as Record<string, unknown>;
 			const x = (b.local_explore ?? {}) as Record<string, unknown>;
 			const welcome = { enabled: on(w.enabled, "new accounts get a welcome"), from: text(w.from, 51).trim().replace(/^@/, ""), text: text(w.text, 2000) };
-			const landing = { enabled: on(l.enabled, "to use the landing page"), tagline: text(l.tagline, 140).trim(), about: text(l.about, 1500).trim(), posts: on(l.posts, "to show recent posts") };
+			const featured = (Array.isArray(l.featured) ? l.featured : String(l.featured ?? "").split(/[\s,]+/)).map((h) => String(h).trim().replace(/^@/, "")).filter((h) => /^\w{1,50}$/.test(h)).slice(0, 8);
+			const landing = { enabled: on(l.enabled, "to use the landing page"), tagline: text(l.tagline, 140).trim(), about: text(l.about, 1500).trim(), posts: on(l.posts, "to show recent posts"), featured };
 			const local_explore = { enabled: on(x.enabled, "Explore shows this instance's posts") };
 			const stats = { enabled: on(((b.stats ?? {}) as Record<string, unknown>).enabled, "the stats page is open") };
 			const public_pages = { enabled: on(((b.public_pages ?? {}) as Record<string, unknown>).enabled, "shared links open for people signed out") };
+			const g = (b.digest ?? {}) as Record<string, unknown>;
+			const hour = Number(g.hour ?? 9);
+			if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new AdminError("The digest hour is 0 to 23 (UTC).");
+			const digestUrl = text(g.url, 500).trim();
+			if (digestUrl && !/^https?:\/\/\S+$/.test(digestUrl)) throw new AdminError("The digest webhook is an http or https address.");
+			const digest = { url: digestUrl, hour, last: extras().digest.last };
 			if (welcome.from && !(await sql`select 1 from users where lower(screen_name) = ${welcome.from.toLowerCase()} and instance is null and role is not null`).length)
 				throw new AdminError(`@${welcome.from} isn't a staff account here.`);
 			await saveExtra("welcome", welcome);
@@ -86,6 +107,7 @@ export const extrasActions: Record<string, Action> = {
 			await saveExtra("local_explore", local_explore);
 			await saveExtra("stats", stats);
 			await saveExtra("public_pages", public_pages);
+			await saveExtra("digest", digest);
 			await audit(a, "save_instance_extras", null, { welcome: welcome.enabled, landing: landing.enabled, local_explore: local_explore.enabled, stats: stats.enabled, public_pages: public_pages.enabled });
 			return {};
 		},

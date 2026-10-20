@@ -10,11 +10,16 @@
 //
 // FOX_BOT_EVERY_MINUTES (default 60) sets the pace; posts land on the hour
 // (or the quarter, for 15) rather than wherever the bot happened to start.
+//
+// Fox on demand: a post that mentions the bot and says fox (or 🦊, floof) gets
+// a fox in reply, checked every minute. One a person every 5 minutes, 30 an
+// hour in all; FOX_BOT_REPLIES=0 turns it off.
 
 const TOKEN = process.env.FOX_BOT_TOKEN ?? "";
 const BASE = (process.env.XITTER_URL ?? "http://app:3000").replace(/\/$/, "");
 const EVERY = Math.max(5, Number(process.env.FOX_BOT_EVERY_MINUTES ?? 60)) * 60_000;
 const ONCE = process.argv.includes("--once");
+const REPLIES = process.env.FOX_BOT_REPLIES !== "0";
 
 if (!/^xit_[0-9a-f]{48}$/.test(TOKEN)) {
 	console.error("fox bot: set FOX_BOT_TOKEN to a write token from the bot account's Settings > API page.");
@@ -61,15 +66,42 @@ async function fox(): Promise<{ image: Blob; type: string; link: string }> {
 	throw new Error("randomfox.ca kept sending the same foxes");
 }
 
-async function postFox() {
+const REPLY_CAPTIONS = ["one fox, coming right up 🦊", "you asked, the fox delivers 🦊", "fox delivery 🦊", "here's your fox 🦊", "special order fox 🦊", "a fox, just for you 🦊"];
+
+async function postFox(replyTo?: string) {
 	const { image, type, link } = await fox();
 	const media = await api("/media", { method: "POST", headers: { "content-type": type }, body: image });
 	const post = await api("/posts", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ text: `${pick(CAPTIONS)}\n\n📷 ${link}`, media_ids: [media.media_id] }),
+		body: JSON.stringify({ text: `${pick(replyTo ? REPLY_CAPTIONS : CAPTIONS)}\n\n📷 ${link}`, media_ids: [media.media_id], ...(replyTo ? { reply_to: replyTo } : {}) }),
 	});
-	console.log(`${new Date().toISOString()} fox bot: posted ${post?.id ?? "a fox"} (${link})`);
+	console.log(`${new Date().toISOString()} fox bot: ${replyTo ? `replied to ${replyTo} with` : "posted"} ${post?.id ?? "a fox"} (${link})`);
+}
+
+// ── fox on demand ─────────────────────────────────────────────────────────
+
+const ASKS = /\bfox(es|y)?\b|🦊|\bfloofs?\b/i;
+let newest = "0";
+const lastBy = new Map<string, number>();
+const sentAt: number[] = [];
+
+async function answerMentions(me: { id: string; screen_name: string }) {
+	const found: any[] = await api(`/search/posts?q=${encodeURIComponent(`@${me.screen_name}`)}&limit=20`);
+	const fresh = found.filter((p) => BigInt(p.id) > BigInt(newest)).reverse();
+	for (const p of fresh) newest = BigInt(p.id) > BigInt(newest) ? p.id : newest;
+	for (const p of fresh) {
+		if (p.author.id === me.id) continue;
+		// "fox" in what they wrote, not just in the bot's name
+		const said = String(p.text).replace(new RegExp(`@${me.screen_name}\\b`, "gi"), "");
+		if (!ASKS.test(said)) continue;
+		const now = Date.now();
+		while (sentAt.length && now - sentAt[0] > 3_600_000) sentAt.shift();
+		if (sentAt.length >= 30 || now - (lastBy.get(p.author.id) ?? 0) < 5 * 60_000) continue;
+		lastBy.set(p.author.id, now);
+		sentAt.push(now);
+		await postFox(p.id).catch((e) => console.error(`${new Date().toISOString()} fox bot: reply to ${p.id} failed: ${e.message}`));
+	}
 }
 
 async function once() {
@@ -88,11 +120,17 @@ const me = await api("/me").catch((e) => {
 	console.error(`fox bot: can't sign in at ${BASE}: ${e.message}`);
 	process.exit(1);
 });
-console.log(`fox bot: posting as @${me.screen_name} to ${BASE}, every ${EVERY / 60_000} minutes`);
+console.log(`fox bot: posting as @${me.screen_name} to ${BASE}, every ${EVERY / 60_000} minutes${REPLIES ? ", and answering fox requests" : ""}`);
 
 if (ONCE) {
 	await once();
 	process.exit(0);
+}
+if (REPLIES) {
+	// what's there already isn't asked again: only mentions from now on
+	const start: any[] = await api(`/search/posts?q=${encodeURIComponent(`@${me.screen_name}`)}&limit=1`).catch(() => []);
+	newest = start[0]?.id ?? "0";
+	setInterval(() => answerMentions(me).catch((e) => console.error(`${new Date().toISOString()} fox bot: mentions: ${e.message}`)), 60_000);
 }
 for (;;) {
 	// the next whole interval: on the hour for 60, on the quarter for 15

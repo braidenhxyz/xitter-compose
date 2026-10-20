@@ -16,6 +16,10 @@
 //   the instances this one federates with, from a cache a few minutes old.
 // - Public pages: a shared link to a post or profile opens for someone
 //   signed out (instance-public.ts).
+// - Featured accounts: a few handles an admin picks, shown on the landing page.
+// - Daily digest: once a day, the day's sign-ups, posts, open reports and
+//   errors, imports waiting and storage, to a Discord or ntfy webhook (or any
+//   URL that takes a JSON post).
 // - Owner: one admin is the instance's owner, saved here rather than worked out
 //   as the longest-standing admin like upstream does (admin.ts ownerId), so
 //   editing join dates can't move it. Only the owner changes join dates and
@@ -33,11 +37,12 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 export type Extras = {
 	welcome: { enabled: boolean; from: string; text: string };
-	landing: { enabled: boolean; tagline: string; about: string; posts: boolean };
+	landing: { enabled: boolean; tagline: string; about: string; posts: boolean; featured: string[] };
 	local_explore: { enabled: boolean };
 	owner: { id: string };
 	stats: { enabled: boolean };
 	public_pages: { enabled: boolean };
+	digest: { url: string; hour: number; last: string };
 };
 
 const DEFAULTS: Extras = {
@@ -46,11 +51,12 @@ const DEFAULTS: Extras = {
 		from: "",
 		text: "Welcome to {instance}, {name}!\n\nHave a look at the rules ({origin}/rules), say hello in a first post, and find people in Explore. Accounts from other instances show their instance after their handle.\n\nIf you need a hand, ask the staff.",
 	},
-	landing: { enabled: true, tagline: "", about: "", posts: true },
+	landing: { enabled: true, tagline: "", about: "", posts: true, featured: [] },
 	local_explore: { enabled: true },
 	owner: { id: "" },
 	stats: { enabled: true },
 	public_pages: { enabled: true },
+	digest: { url: "", hour: 9, last: "" },
 };
 
 let current: Extras = structuredClone(DEFAULTS);
@@ -154,6 +160,14 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 		l.posts ? recentPosts() : Promise.resolve([]),
 	]);
 	const closed = s.signup_mode === "closed";
+	// the accounts an admin features, in the order given, while still public
+	const featured = l.featured.length
+		? ((await sql`select u.screen_name, u.name, u.bio, u.avatar_url from users u
+				where lower(u.screen_name) = any(${sql.array(l.featured.map((h) => h.toLowerCase()), "TEXT")}) and u.instance is null
+					and not u.protected and u.status = 'active' and u.deactivated_at is null`) as any[]).sort(
+				(a, b) => l.featured.findIndex((h) => h.toLowerCase() === a.screen_name.toLowerCase()) - l.featured.findIndex((h) => h.toLowerCase() === b.screen_name.toLowerCase()),
+			)
+		: [];
 	// an uploaded word mark (Admin > Settings, Logo and icons) stands in for the
 	// name; the shipped one is Xitter's, not this instance's, so then the name shows
 	const { brandingState } = await import("./branding");
@@ -171,8 +185,21 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 	const lightCss = scheme === "light" ? LIGHT : scheme === "auto" ? `@media (prefers-color-scheme: light) { ${LIGHT} }` : "";
 	const description = l.tagline || [...l.about].slice(0, 200).join("") || `${name}, a place to post`;
 	const about = l.about.trim() ? l.about.trim().split(/\n\s*\n/).map((p) => `<p>${esc(p)}</p>`).join("") : "";
-	// signed out, media isn't served, so a letter stands in for the avatar
+	// signed out, media isn't served (but for the shared-link pages' own, while
+	// they're on), so a letter stands in for the avatar
 	const hue = (h: string) => [...h].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 360, 7);
+	const pub = current.public_pages.enabled;
+	const avatarOf = (u: any, size = 40) => {
+		const id = /^\/media\/(\d{1,19})$/.exec(u.avatar_url ?? "")?.[1];
+		return id && pub
+			? `<img class="av" src="/p/media/${id}" alt="" style="width:${size}px;height:${size}px;object-fit:cover">`
+			: `<span class="av" aria-hidden="true" style="width:${size}px;height:${size}px;background:hsl(${hue(u.screen_name)} 55% 42%)">${esc([...String(u.name || u.screen_name)][0]?.toUpperCase() ?? "?")}</span>`;
+	};
+	const people = featured.length
+		? `<section class="feed people" aria-label="Featured accounts"><h2>Who's here</h2>${featured
+				.map((u: any) => `<${pub ? `a href="/${esc(u.screen_name)}"` : "div"} class="person">${avatarOf(u)}<div><div class="who"><b>${esc(u.name || u.screen_name)}</b> <span>@${esc(u.screen_name)}</span></div>${u.bio ? `<p>${esc([...String(u.bio)].slice(0, 120).join(""))}</p>` : ""}</div></${pub ? "a" : "div"}>`)
+				.join("")}</section>`
+		: "";
 	const feed = posts.length
 		? `<section class="feed" aria-label="Recent posts"><h2>Recently on ${esc(name)}</h2>${posts
 				.map(
@@ -221,7 +248,12 @@ ${scheme === "auto" ? `<meta name="theme-color" content="#000000" media="(prefer
 	.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 	.small { color: var(--dim); font-size: 13px; margin-top: 16px; }
 	.small a { color: var(--accent); text-decoration: none; }
+	.stack { display: grid; gap: 16px; }
 	.feed { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+	.person { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+	.person:last-child { border-bottom: 0; }
+	a.person:hover { background: var(--card); }
+	.person p { margin: 2px 0 0; color: var(--dim); }
 	.feed h2 { font-size: 20px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 	article { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 	article:last-child { border-bottom: 0; }
@@ -244,7 +276,7 @@ ${scheme === "auto" ? `<meta name="theme-color" content="#000000" media="(prefer
 		</div>
 		<p class="small">${s.signup_mode === "invite" ? "Sign-up needs an invite code. " : closed ? "Sign-up is closed right now. " : ""}<a href="/rules">Rules</a>${current.stats.enabled ? ` · <a href="/stats">Stats</a>` : ""} · <a href="${esc(s.source_url)}">Source</a></p>
 	</div>
-	${feed}
+	<div class="stack">${people}${feed}</div>
 </main>
 </body>
 </html>`;
@@ -370,6 +402,59 @@ export async function statsPage(): Promise<Response | undefined> {
 </html>`;
 	return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
 }
+
+// ── daily digest ───────────────────────────────────────────────────────────
+
+async function digestText() {
+	const [d] = await sql`select
+		(select count(*)::int from users where instance is null and created_at > now() - interval '1 day') as joined,
+		(select count(*)::int from users where instance is null and status <> 'suspended' and deactivated_at is null) as accounts,
+		(select count(*)::int from posts p join users u on u.id = p.user_id where u.instance is null and p.created_at > now() - interval '1 day') as posts,
+		(select count(distinct p.user_id)::int from posts p join users u on u.id = p.user_id where u.instance is null and p.created_at > now() - interval '1 day') as posters,
+		(select count(*)::int from reports where status = 'open') as reports,
+		(select count(*)::int from error_log where not resolved) as errors,
+		(select count(*)::int from archive_imports where state = 'pending') as imports,
+		(select coalesce(sum(size), 0)::float8 from media) as media_bytes,
+		pg_database_size(current_database())::float8 as db_bytes`;
+	const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
+	const name = settings().instance_name;
+	const attention = [d.reports && `${d.reports} open report${d.reports === 1 ? "" : "s"}`, d.errors && `${d.errors} unresolved error${d.errors === 1 ? "" : "s"}`, d.imports && `${d.imports} import${d.imports === 1 ? "" : "s"} waiting for approval`].filter(Boolean);
+	const lines = [
+		`👋 ${d.joined} new account${d.joined === 1 ? "" : "s"} (${d.accounts.toLocaleString("en-US")} in all)`,
+		`📝 ${d.posts.toLocaleString("en-US")} post${d.posts === 1 ? "" : "s"} from ${d.posters} ${d.posters === 1 ? "person" : "people"}`,
+		attention.length ? `⚠️ ${attention.join(", ")}: ${PUBLIC_ORIGIN}/admin` : "✅ Nothing waiting for staff",
+		`💾 Media ${gb(d.media_bytes)}, database ${gb(d.db_bytes)}`,
+	];
+	return { title: `${name} · the last 24 hours`, body: lines.join("\n") };
+}
+
+// Discord's webhooks, ntfy topics, or JSON { title, text } for anything else
+export async function sendDigest(url = current.digest.url) {
+	if (!/^https?:\/\//.test(url)) throw new Error("Set a webhook address first.");
+	const { title, body } = await digestText();
+	const discord = /^https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api\/webhooks\//.test(url);
+	const ntfy = /ntfy/.test(new URL(url).hostname);
+	const r = await fetch(url, {
+		method: "POST",
+		signal: AbortSignal.timeout(10_000),
+		...(discord
+			? { headers: { "content-type": "application/json" }, body: JSON.stringify({ username: settings().instance_name, content: `**${title}**\n${body}` }) }
+			: ntfy
+				? { headers: { title: title.replace(" · ", " - ").replace(/[^\x20-\x7e]/g, ""), tags: "bar_chart" }, body }
+				: { headers: { "content-type": "application/json" }, body: JSON.stringify({ title, text: body }) }),
+	});
+	if (!r.ok) throw new Error(`The webhook answered ${r.status}.`);
+}
+
+// every ten minutes: past the hour (UTC) and not sent today, it goes
+setInterval(() => {
+	const d = current.digest;
+	const today = new Date().toISOString().slice(0, 10);
+	if (!d.url || d.last === today || new Date().getUTCHours() < d.hour) return;
+	saveExtra("digest", { ...d, last: today })
+		.then(() => sendDigest())
+		.catch((e) => console.error("daily digest:", e.message));
+}, 10 * 60_000).unref();
 
 // ── from this instance, on Explore ─────────────────────────────────────────
 
