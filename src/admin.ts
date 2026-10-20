@@ -29,6 +29,7 @@ import { mailEnabled, mailFrom, sendMail } from "./mail";
 import { mailDigests } from "./mail-digest";
 import { toolActions } from "./admin-tools";
 import { extrasActions } from "./instance-extras-admin";
+import { instanceOwner } from "./instance-extras";
 import { stickerActions } from "./stickers";
 import { hashflagActions } from "./hashflags";
 import { switchActions } from "./feature-switches";
@@ -70,7 +71,8 @@ async function userRow(id: string) {
 // change the owner's account, the owner can change theirs. Admins otherwise
 // can't touch each other, except that whoever gave an account its staff role
 // can still act on it, while they still rank as high as it (not once demoted).
-const ownerId = async () => (await sql`select id::text from users where role = 'admin' and instance is null order by created_at, id limit 1`)[0]?.id as string | undefined;
+// this instance: the owner is saved, not the longest-standing admin (instance-extras.ts)
+const ownerId = instanceOwner;
 const rankOf = (role: string | null, isOwner: boolean) => (isOwner ? 4 : role ? RANK[role as Role] : 0);
 
 export async function guard(actor: Viewer, targetId: string, localOnly = false) {
@@ -287,6 +289,7 @@ const ACTIONS: Record<string, Action> = {
 	// `allowed`: the actions this account may run, for the panel to show only those
 	me: { role: "support", run: async (a) => ({ id: a.id, screen_name: a.screen_name, role: a.role, superadmin: !!a.superadmin,
 		superadmin_home: !a.instance && a.role === "admin" && !!superadminOf(INSTANCE_ID, a.screen_name, a.id),
+		owner_id: (await ownerId()) ?? null,
 		allowed: Object.entries(ACTIONS).filter(([name, x]) => mayRun(a.role, name, x.role)).map(([name]) => name) }) },
 
 	staffPermissions: { role: "admin", run: async () => ({

@@ -12,6 +12,10 @@
 // - From this instance: the top of Explore shows the latest posts by this
 //   instance's own accounts, and "Show more" searches all of them
 //   ("filter:local", search.ts).
+// - Owner: one admin is the instance's owner, saved here rather than worked out
+//   as the longest-standing admin like upstream does (admin.ts ownerId), so
+//   editing join dates can't move it. Only the owner changes join dates and
+//   hands the instance to another admin (instance-extras-admin.ts).
 
 // what pulls in half the server (posts, search, the client shell) is
 // imported where it's used, so this file can load before or after any of it
@@ -27,6 +31,7 @@ export type Extras = {
 	welcome: { enabled: boolean; from: string; text: string };
 	landing: { enabled: boolean; tagline: string; about: string; posts: boolean };
 	local_explore: { enabled: boolean };
+	owner: { id: string };
 };
 
 const DEFAULTS: Extras = {
@@ -37,6 +42,7 @@ const DEFAULTS: Extras = {
 	},
 	landing: { enabled: true, tagline: "", about: "", posts: true },
 	local_explore: { enabled: true },
+	owner: { id: "" },
 };
 
 let current: Extras = structuredClone(DEFAULTS);
@@ -47,6 +53,21 @@ export async function loadExtras() {
 	const next = structuredClone(DEFAULTS) as any;
 	for (const r of await sql`select key, value from instance_extras`) if (r.key in next) next[r.key] = { ...next[r.key], ...r.value };
 	current = next;
+	// the first start with this: whoever upstream counts as owner stays it
+	if (!current.owner.id) {
+		const id = await longestAdmin();
+		if (id) await saveExtra("owner", { id });
+	}
+}
+
+const longestAdmin = async () => (await sql`select id::text from users where role = 'admin' and instance is null order by created_at, id limit 1`)[0]?.id as string | undefined;
+
+// the instance's owner (admin.ts ownerId): the saved one while it's still a
+// local admin, else, as upstream has it, the longest-standing admin
+export async function instanceOwner(): Promise<string | undefined> {
+	const id = current.owner.id;
+	if (id && (await sql`select 1 from users where id = ${id}::bigint and role = 'admin' and instance is null`).length) return id;
+	return longestAdmin();
 }
 
 export const extras = () => current;

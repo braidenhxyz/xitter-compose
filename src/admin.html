@@ -167,7 +167,7 @@ function browser(ua) {
 const avatar = (u) => u.avatar_url ? (u.avatar_url.startsWith("/") ? u.avatar_url : u.avatar_url) : "/abs/sticky/default_profile_images/default_profile_normal.png";
 const badge = (u) => u.verified_type ? '<span class="badge ' + esc(u.verified_type) + '" title="' + esc(u.verified_type) + '"></span>' : "";
 const flagImg = (u) => u.flag ? '<img class="flag" alt="' + esc(u.flag) + '" src="/public/flag-' + esc(u.flag) + '.svg">' : "";
-const standing = (u) => (u.status && u.status !== "active" ? ' <span class="pill ' + esc(u.status) + '">' + esc(u.status) + "</span>" : "") + (u.role ? ' <span class="pill staff">' + esc(u.role) + "</span>" : "");
+const standing = (u) => (u.status && u.status !== "active" ? ' <span class="pill ' + esc(u.status) + '">' + esc(u.status) + "</span>" : "") + (u.role ? ' <span class="pill staff">' + esc(me && u.id && u.id === me.owner_id ? "owner" : u.role) + "</span>" : "");
 const person = (u) => '<div class="person"><img class="avatar" alt="" src="' + esc(avatar(u)) + '"><div class="names"><div><b>' + esc(u.name) + "</b> " + badge(u) + " " + flagImg(u) + '</div><div class="dim small">@' + esc(u.screen_name) + standing(u) + "</div></div></div>";
 
 const PAGES = {
@@ -1200,7 +1200,7 @@ const RENDER = {
 
 // this instance only, not upstream (instance-extras.ts)
 RENDER.extras = async function (main) {
-	const { extras: x } = await api("extras");
+	const { extras: x, owner, admins } = await api("extras");
 	const w = x.welcome, l = x.landing;
 	const check = (id, on, label) => '<label class="row" style="margin:6px 0"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + "> " + esc(label) + "</label>";
 	main.innerHTML = "<h1>Instance extras</h1>" + '<p class="dim">Features this instance has that Xitter itself doesn\'t.</p>' + '<div class="grid2">' +
@@ -1215,12 +1215,37 @@ RENDER.extras = async function (main) {
 		check("xlPosts", l.posts, "Show a few recent public posts from this instance's accounts") + "</div>" +
 		'<div class="box"><h2>Explore</h2>' + check("xeOn", x.local_explore.enabled, "Show the latest posts from this instance's own accounts at the top of Explore") +
 		'<p class="dim small">"Show more" searches filter:local, which also works in the search box.</p></div>' +
-		'</div><button class="btn primary" id="xSave" style="margin-top:12px">Save</button>';
+		'</div><button class="btn primary" id="xSave" style="margin-top:12px">Save</button>' +
+		'<h2 style="margin-top:28px">Owner</h2>' +
+		(!owner.you
+			? '<p class="dim">' + (owner.screen_name ? "The instance owner is @" + esc(owner.screen_name) + ". Only they can change join dates or hand the instance on." : "This instance has no owner yet.") + "</p>"
+			: '<p class="dim">You own this instance. These are yours alone; other admins can\'t use them, and each one is in the audit log.</p><div class="grid2">' +
+				'<div class="box"><h2>Join date</h2><p class="dim small">The "Joined" date on an account\'s profile, for example the date someone joined X, after they import their archive.</p>' +
+				'<div class="field"><label>Account</label><input id="ojAcct" placeholder="@handle"></div>' +
+				'<div class="field"><label>Joined</label><input id="ojDate" type="date" min="2006-03-21"></div>' +
+				'<button class="btn primary" id="ojSave">Change</button></div>' +
+				'<div class="box"><h2>Hand the instance on</h2><p class="dim small">Makes another admin the owner. You stay an admin, but lose these tools, and the new owner outranks you.</p>' +
+				(admins.length
+					? '<div class="field"><label>New owner</label><select id="otTo">' + admins.map((u) => '<option value="' + esc(u.id) + '">@' + esc(u.screen_name) + "</option>").join("") + "</select></div>" +
+						'<button class="btn danger" id="otGo">Make them the owner</button>'
+					: '<p class="dim small">Make someone an admin first.</p>') + "</div></div>");
 	$("#xSave").onclick = () => act(() => api("saveExtras", {
 		welcome: { enabled: $("#xwOn").checked, from: $("#xwFrom").value, text: $("#xwText").value },
 		landing: { enabled: $("#xlOn").checked, tagline: $("#xlTag").value, about: $("#xlAbout").value, posts: $("#xlPosts").checked },
 		local_explore: { enabled: $("#xeOn").checked },
 	}), "Saved").then(route);
+	if (!owner.you) return;
+	$("#ojDate").max = new Date().toISOString().slice(0, 10);
+	$("#ojSave").onclick = () => act(async () => {
+		const r = await api("ownerJoinDate", { account: $("#ojAcct").value, date: $("#ojDate").value });
+		$("#ojAcct").value = "";
+		return r;
+	}, "Join date changed");
+	if ($("#otGo")) $("#otGo").onclick = async () => {
+		const pick = $("#otTo").selectedOptions[0];
+		if (!(await ask("Make " + pick.textContent + " the owner of this instance? You can't undo this yourself."))) return;
+		act(() => api("ownerTransfer", { account: pick.value }), "Ownership handed on").then(route);
+	};
 };
 
 // the number of open reports beside Reports in the menu
