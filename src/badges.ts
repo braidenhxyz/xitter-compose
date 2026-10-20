@@ -65,8 +65,12 @@ export const BADGES_SCRIPT = String.raw`(function(){
 	// the containers that show a name with its badge; the account is the "@name" in them
 	var SEL='[data-testid="User-Name"],[data-testid="UserName"],[data-testid="UserCell"],[data-testid="HoverCard"],[data-testid="SideNav_AccountSwitcher_Button"],[data-testid="primaryColumn"] h2';
 	function handle(box){
+		// a handle shortened to "@name" (shorten below) keeps the whole one on its
+		// element: the short text would name someone else here, with their badges
+		var tagged=box.matches("[data-xitter-handle]")?box:box.querySelector("[data-xitter-handle]");
+		if(tagged)return tagged.getAttribute("data-xitter-handle");
 		var spans=box.querySelectorAll("span");
-		for(var i=0;i<spans.length;i++){var full=spans[i].getAttribute("data-xitter-handle");if(full)return full;var m=/^@([^\s\/\?#@%,:]{1,50}(?:@[a-zA-Z0-9.-]{1,253}(?::\d{1,5})?)?)$/.exec(spans[i].textContent);if(m)return m[1].toLowerCase()}
+		for(var i=0;i<spans.length;i++){var m=/^@([^\s\/\?#@%,:]{1,50}(?:@[a-zA-Z0-9.-]{1,253}(?::\d{1,5})?)?)$/.exec(spans[i].textContent);if(m)return m[1].toLowerCase()}
 		// a profile's top bar has the name but no handle: the page's address does
 		if(box.tagName==="H2"){
 			var p=/^\/([^\/?#]{1,150})(?:\/|$)/.exec(location.pathname);
@@ -78,16 +82,33 @@ export const BADGES_SCRIPT = String.raw`(function(){
 	// stays on the element (and its tooltip), and the globe badge says where
 	// they're from. Only the text changes, in place, so the client's own copy
 	// of it stays its own: when it writes the long one back, it's shortened again.
+	// the instance follows the short handle, or five accounts would all read
+	// "@Roblox": a small tag after a name, and inside a post's text, where a
+	// mention is part of a sentence, the rest of the handle in a fainter colour
 	function shorten(box){
 		var spans=[box].concat([].slice.call(box.querySelectorAll("span, a")));
 		for(var i=0;i<spans.length;i++){
-			var t=spans[i].firstChild;
-			if(!t||t.nodeType!==3||spans[i].childNodes.length!==1)continue;
+			var el=spans[i],t=el.firstChild;
+			if(!t||t.nodeType!==3||el.childNodes.length!==1)continue;
 			var m=/^@([^\s\/\?#@%,:]{1,50})@([a-zA-Z0-9.-]{1,253}(?::\d{1,5})?)$/.exec(t.nodeValue);
 			if(!m)continue;
-			spans[i].setAttribute("data-xitter-handle",(m[1]+"@"+m[2]).toLowerCase());
-			spans[i].title="@"+m[1]+"@"+m[2];
+			el.setAttribute("data-xitter-handle",(m[1]+"@"+m[2]).toLowerCase());
+			el.title="@"+m[1]+"@"+m[2];
 			t.nodeValue="@"+m[1];
+			if(el.nextElementSibling&&el.nextElementSibling.hasAttribute("data-xitter-home"))continue;
+			var home=document.createElement("span");
+			home.setAttribute("data-xitter-home","");
+			home.title="From "+m[2];
+			if(el.closest('[data-testid="tweetText"]')){
+				// a mention in a sentence: the rest of the handle, fainter, in its colour
+				home.textContent="@"+m[2];
+				home.style.cssText="color:"+getComputedStyle(el).color+";opacity:.55;cursor:pointer";
+				home.addEventListener("click",function(link){return function(e){e.preventDefault();e.stopPropagation();link.click()}}(el));
+			}else{
+				home.textContent=m[2];
+				home.style.cssText="display:inline-block;margin-left:4px;padding:0 5px;border:1px solid rgb(13 148 136 / .5);border-radius:4px;color:#0d9488;font-size:12px;line-height:16px;vertical-align:1px;white-space:nowrap";
+			}
+			el.after(home);
 		}
 	}
 	// the same inside running text ("Replying to @a@x.org and @b@y.org")
@@ -302,6 +323,9 @@ export const BADGES_SCRIPT = String.raw`(function(){
 	}
 	function scan(){
 		document.querySelectorAll(SEL).forEach(function(box){
+			// a box holding other accounts' boxes (the account switcher, a hover card
+			// with a list): each of those is an account of its own, this one isn't
+			if(box.querySelector(SEL))return;
 			shorten(box);
 			var name=handle(box);
 			if(!name)return;

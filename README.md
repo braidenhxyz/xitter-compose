@@ -375,3 +375,7 @@ expiry, write paths and request limits against one.
 [AGPL-3.0](LICENSE). If you run a modified instance for other people, you must
 offer them its source; the signed-out home page links to it (`SOURCE_URL`, or the admin
 panel's Settings).
+
+## Stars
+
+[![GitHub stars](https://img.shields.io/github/stars/Xittered/xitter?style=for-the-badge&logo=github&label=stars)](https://github.com/Xittered/xitter/stargazers)
