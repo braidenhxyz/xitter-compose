@@ -20,7 +20,6 @@ const { newId } = await import("../src/ids");
 const { decideImport, runImport, tidyImports } = await import("../src/archive-import");
 const { settings } = await import("../src/settings");
 const { Zip, ZipError } = await import("../src/zip");
-const { sourceFile } = await import("../src/video");
 // off by default (Admin > Settings); this run's copy of the settings only
 settings().features.archive_import = true;
 settings().operations.blocked_phrases = ["buy followers"];
@@ -149,7 +148,8 @@ try {
 	await assert.rejects(liar.read(liar.entries[0], 1024), ZipError, "the packed length counts too");
 	await assert.rejects(liar.extract(liar.entries[0], 1024, join(scratch, "out")), ZipError);
 	assert(!existsSync(join(scratch, "out")), "a refused extract leaves nothing behind");
-	assert(existsSync(sourceFile(process.env.MEDIA_DIR!, video.id)), "the video was written to disk");
+	// no check for the .upload file: the video queue may have converted or
+	// refused it (and deleted it) by now. its size above is what extract wrote
 
 	// one waiting for staff, declined: the account is told why, the zip goes
 	await sql`update archive_imports set state = 'pending' where user_id = ${user}::bigint`;
