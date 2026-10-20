@@ -462,6 +462,11 @@ async function route(req: Request): Promise<Response | undefined> {
 
 	// signed out: a public post or profile gives other apps' link fetchers its preview
 	if (!viewer && req.method === "GET") {
+		// this instance only: people get a page they can read (instance-public.ts)
+		if (!settings().operations.maintenance) {
+			const view = await (await import("./instance-public")).publicView(req, url);
+			if (view) return view;
+		}
 		const preview = await linkPreview(p);
 		if (preview) return preview;
 	}

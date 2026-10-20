@@ -14,6 +14,8 @@
 //   ("filter:local", search.ts).
 // - Stats: /stats, open to anyone: accounts, posts, hashtags this week and
 //   the instances this one federates with, from a cache a few minutes old.
+// - Public pages: a shared link to a post or profile opens for someone
+//   signed out (instance-public.ts).
 // - Owner: one admin is the instance's owner, saved here rather than worked out
 //   as the longest-standing admin like upstream does (admin.ts ownerId), so
 //   editing join dates can't move it. Only the owner changes join dates and
@@ -35,6 +37,7 @@ export type Extras = {
 	local_explore: { enabled: boolean };
 	owner: { id: string };
 	stats: { enabled: boolean };
+	public_pages: { enabled: boolean };
 };
 
 const DEFAULTS: Extras = {
@@ -47,6 +50,7 @@ const DEFAULTS: Extras = {
 	local_explore: { enabled: true },
 	owner: { id: "" },
 	stats: { enabled: true },
+	public_pages: { enabled: true },
 };
 
 let current: Extras = structuredClone(DEFAULTS);

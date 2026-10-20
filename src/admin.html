@@ -1308,6 +1308,8 @@ RENDER.extras = async function (main) {
 		'<p class="dim small">"Show more" searches filter:local, which also works in the search box.</p></div>' +
 		'<div class="box"><h2>Stats page</h2>' + check("xsOn", x.stats?.enabled !== false, "Open /stats to everyone: accounts, posts, hashtags and connected instances") +
 		'<p class="dim small"><a href="/stats" target="_blank">Open it</a>. The landing page links to it while it\'s on.</p></div>' +
+		'<div class="box"><h2>Shared links</h2>' + check("xpOn", x.public_pages?.enabled !== false, "Let people who aren't signed in read a post or profile someone sent them a link to") +
+		'<p class="dim small">Only what a public account shows: no protected, suspended or hidden accounts and posts, no community posts, no media marked sensitive. Search engines are asked not to index these pages.</p></div>' +
 		'</div><button class="btn primary" id="xSave" style="margin-top:12px">Save</button>' +
 		'<h2 style="margin-top:28px">Owner</h2>' +
 		(!owner.you
@@ -1327,6 +1329,7 @@ RENDER.extras = async function (main) {
 		landing: { enabled: $("#xlOn").checked, tagline: $("#xlTag").value, about: $("#xlAbout").value, posts: $("#xlPosts").checked },
 		local_explore: { enabled: $("#xeOn").checked },
 		stats: { enabled: $("#xsOn").checked },
+		public_pages: { enabled: $("#xpOn").checked },
 	}), "Saved").then(route);
 	if (!owner.you) return;
 	$("#ojDate").max = new Date().toISOString().slice(0, 10);

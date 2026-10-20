@@ -78,13 +78,15 @@ export const extrasActions: Record<string, Action> = {
 			const landing = { enabled: on(l.enabled, "to use the landing page"), tagline: text(l.tagline, 140).trim(), about: text(l.about, 1500).trim(), posts: on(l.posts, "to show recent posts") };
 			const local_explore = { enabled: on(x.enabled, "Explore shows this instance's posts") };
 			const stats = { enabled: on(((b.stats ?? {}) as Record<string, unknown>).enabled, "the stats page is open") };
+			const public_pages = { enabled: on(((b.public_pages ?? {}) as Record<string, unknown>).enabled, "shared links open for people signed out") };
 			if (welcome.from && !(await sql`select 1 from users where lower(screen_name) = ${welcome.from.toLowerCase()} and instance is null and role is not null`).length)
 				throw new AdminError(`@${welcome.from} isn't a staff account here.`);
 			await saveExtra("welcome", welcome);
 			await saveExtra("landing", landing);
 			await saveExtra("local_explore", local_explore);
 			await saveExtra("stats", stats);
-			await audit(a, "save_instance_extras", null, { welcome: welcome.enabled, landing: landing.enabled, local_explore: local_explore.enabled, stats: stats.enabled });
+			await saveExtra("public_pages", public_pages);
+			await audit(a, "save_instance_extras", null, { welcome: welcome.enabled, landing: landing.enabled, local_explore: local_explore.enabled, stats: stats.enabled, public_pages: public_pages.enabled });
 			return {};
 		},
 	},
