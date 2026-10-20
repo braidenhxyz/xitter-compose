@@ -11,6 +11,7 @@
 //   since:2026-01-31  until:2026-02-01
 //   min_faves:N  min_retweets:N  min_replies:N
 //   filter:follows                   authors the viewer follows
+//   filter:local                     authors on this instance
 //   lang:xx, near:, other operators  accepted and ignored
 
 import { blockedFor, federatedHiddenFor, namesOtherInstance, outOfView, protectedFor } from "./blocks";
@@ -69,6 +70,8 @@ function term(t: string, viewerId: string): Clause | undefined {
 		else if (f === "quote") c = sql`p.quote_id is not null`;
 		// "People you follow" in the search filters
 		else if (f === "follows") c = sql`p.user_id in (select followee_id from follows where follower_id = ${viewerId}::bigint)`;
+		// this instance's own accounts (instance-extras.ts, Explore)
+		else if (f === "local") c = sql`p.user_id in (select id from users where instance is null)`;
 	} else if ((m = /^since:(\d{4}-\d{2}-\d{2})$/.exec(body))) c = validDate(m[1]) ? sql`p.created_at >= ${m[1]}::date` : sql`false`;
 	else if ((m = /^until:(\d{4}-\d{2}-\d{2})$/.exec(body))) c = validDate(m[1]) ? sql`p.created_at < ${m[1]}::date` : sql`false`;
 	else if ((m = /^min_(faves|retweets|replies):(\d{1,9})$/i.exec(body))) {

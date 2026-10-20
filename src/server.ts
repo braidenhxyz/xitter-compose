@@ -266,6 +266,9 @@ setInterval(
 	30_000,
 ).unref();
 await loadSettings();
+// this instance only, not upstream; loaded once everything it uses is
+const extras = await import("./instance-extras");
+await extras.loadExtras();
 await resumeVideos(MEDIA_DIR);
 await resumeImports();
 
@@ -404,6 +407,7 @@ async function route(req: Request): Promise<Response | undefined> {
 	if (p === "/account/automation" && viewer) return automationRoute(req, viewer);
 	if (p === "/account/instances" && viewer) return instancesRoute(req, viewer);
 	if ((p === "/account/import" || p === "/account/import/upload") && viewer) return importRoute(req, url, viewer);
+	if (p === "/account/extras" && viewer) return extras.extrasRoute(req, viewer);
 	if (p === "/account/decoration" && viewer) return decorationRoute(req, viewer);
 	if (p === "/account/organisation" && viewer) return orgRoute(req, viewer);
 	if (p === "/account/decor" && viewer) return decorRoute(req, viewer);
@@ -445,6 +449,10 @@ async function route(req: Request): Promise<Response | undefined> {
 	if (!viewer && p !== "/" && !p.startsWith("/i/jf/onboarding")) return Response.redirect("/", 302);
 	// maintenance: guests see the notice; ?staff=1 is the sign-in page, for staff
 	if (!viewer && p === "/" && settings().operations.maintenance && !url.searchParams.has("staff")) return maintenancePage(true);
+	if (!viewer && p === "/" && !url.searchParams.has("staff")) {
+		const landing = await extras.landingPage(req, url);
+		if (landing) return landing;
+	}
 	const [communityRows, flagRows, links] = viewer
 		? await Promise.all([
 			sql`select 1 from community_members where user_id = ${viewer.id}::bigint limit 1`,

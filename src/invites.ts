@@ -152,5 +152,7 @@ export async function signUp(
 				select ${id}::bigint, u.id from users u where lower(u.screen_name) = any(${sql.array(follows, "TEXT")}) and u.status <> 'suspended'
 				on conflict do nothing`;
 	});
+	// this instance only (instance-extras.ts), loaded late: it imports half the server
+	void import("./instance-extras").then((m) => m.sendWelcome(id));
 	return id;
 }

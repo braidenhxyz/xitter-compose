@@ -1013,8 +1013,10 @@ async function explorePage(viewer: Viewer) {
 		sortIndex: (base - BigInt(i)).toString(),
 		content: { __typename: "TimelineTimelineItem", entryType: "TimelineTimelineItem", itemContent: trendItem(t, i, scope.label) },
 	}));
+	const local = await (await import("./instance-extras")).localExploreEntry(viewer, (base + 2n).toString());
+	if (local) entries.unshift(local);
 	const cards = await activeCards();
-	if (cards.length) entries.unshift(cardsEntry(cards, (base + 1n).toString()));
+	if (cards.length) entries.unshift(cardsEntry(cards, (base + 3n).toString()));
 	const timeline = { instructions: [{ type: "TimelineAddEntries", entries }] };
 	return { data: { explore_page: { id: globalId("ExplorePage", "explore"), body: { __typename: "Timeline", timeline } } } };
 }
