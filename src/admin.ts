@@ -17,7 +17,7 @@ import { sql } from "./db";
 import { flagValue, unknownFlag } from "./flags";
 import { isId, newId } from "./ids";
 import { createInvite, staffHandleProblem } from "./invites";
-import { retireAccount } from "./held";
+import { forgetHeld, handleHeld, retireAccount } from "./held";
 import { activeStrikes, shutOut } from "./moderation";
 import { REASONS } from "./reports";
 import { FEATURES, type Feature, type SignupMode, allSettings, setSetting, settings } from "./settings";
@@ -377,6 +377,7 @@ const ACTIONS: Record<string, Action> = {
 			const [u] = await sql`select ${userListCols}, ${allows(a.role, "invites") ? sql`u.invite_code` : sql`null::text as invite_code`}, u.bio, u.location, u.website, u.based_in_override, u.country, u.count_overrides, u.decor, u.notes_writer, u.never_sensitive, u.org_badge_id::text, u.status_until, u.parody_label, u.label_id::text, u.instance,
 				(select coalesce(json_agg(ub.badge_id::text order by ub.position), '[]') from user_badges ub where ub.user_id = u.id) as badge_ids,
 				(select count(*)::int from sessions s where s.user_id = u.id) as sessions,
+				(select count(*)::int from api_tokens t where t.user_id = u.id) as api_tokens,
 				(select c.screen_name from invites i join users c on c.id = i.created_by where i.code = u.invite_code) as invited_by
 				from users u where u.id = ${id}::bigint`;
 			if (!u) throw new AdminError("No such account.", 404);
@@ -416,11 +417,13 @@ const ACTIONS: Record<string, Action> = {
 			if (changes.screen_name) {
 				const [taken] = await sql`select 1 from users where lower(screen_name) = lower(${changes.screen_name}) and id <> ${id}::bigint`;
 				if (taken) throw new AdminError("That handle is taken.");
+				if (await handleHeld(changes.screen_name, id)) throw new AdminError("That handle looks too much like another account's.");
 			}
 			const [old] = await sql`select screen_name from users where id = ${id}::bigint`;
 			await sql`update users set ${sql(changes)} where id = ${id}::bigint`;
 			if (changes.screen_name && changes.screen_name !== old.screen_name)
 				await sql`insert into username_changes (user_id, old_name, new_name) values (${id}::bigint, ${old.screen_name}, ${changes.screen_name})`;
+			if (changes.screen_name) forgetHeld();
 			await audit(a, "edit_profile", id, changes);
 			return {};
 		},
@@ -539,6 +542,18 @@ const ACTIONS: Record<string, Action> = {
 		},
 	},
 
+	// personal tokens and connected-app grants alike: a leaked token outlives a sign-out
+	revokeApiTokens: {
+		role: "support",
+		run: async (a, b) => {
+			const id = idOf(b.id);
+			await guard(a, id, true);
+			const rows = await sql`delete from api_tokens where user_id = ${id}::bigint returning id`;
+			await audit(a, "revoke_api_tokens", id, { tokens: rows.length });
+			return { tokens: rows.length };
+		},
+	},
+
 	deleteUser: {
 		role: "admin",
 		run: async (a, b) => {
@@ -567,12 +582,14 @@ const ACTIONS: Record<string, Action> = {
 			const name = String(b.name ?? "").trim() || screenName;
 			if (!/^[A-Za-z0-9_]{4,15}$/.test(screenName)) throw new AdminError("Handles are 4 to 15 letters, digits or underscores.");
 			if (superadminNameHere(screenName)) throw new AdminError("That handle is reserved.");
+			if (await handleHeld(screenName)) throw new AdminError("That handle looks too much like another account's.");
 			const [taken] = await sql`select 1 from users where lower(screen_name) = lower(${screenName})`;
 			if (taken) throw new AdminError("That handle is taken.");
 			const password = randomPassword();
 			const id = newId();
 			await sql`insert into users (id, screen_name, name, password_hash, verified_type)
 				values (${id}::bigint, ${screenName}, ${name}, ${await Bun.password.hash(password)}, 'business')`;
+			forgetHeld();
 			await audit(a, "create_org", id, { screen_name: screenName });
 			return { id, password };
 		},
