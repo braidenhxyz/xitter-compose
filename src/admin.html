@@ -92,6 +92,65 @@
 		nav .who { display: none; }
 		main { padding: 16px; }
 	}
+
+	/* ── this instance's look (live branch only, not upstream): overrides only,
+	   so upstream's markup and rules above merge as they are ── */
+	:root { --bg: #0b0d10; --panel: #14171c; --panel2: #1b1f26; --line: #262b33; --text: #e8eaed; --dim: #8b929c; --blue: #4c9dff; --accent-soft: rgba(76,157,255,.14); }
+	body { font: 14.5px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; font-feature-settings: "tnum" 1, "cv11" 1; -webkit-font-smoothing: antialiased; }
+	.app { grid-template-columns: 236px 1fr; }
+	nav { background: var(--panel); border-right-color: var(--line); padding: 18px 10px; display: flex; flex-direction: column; gap: 2px; }
+	nav .logo { width: 120px; margin: 2px 12px 22px; }
+	nav button { gap: 12px; padding: 8px 12px; border-radius: 10px; color: var(--dim); font-size: 14px; font-weight: 500; transition: background .12s, color .12s; }
+	nav button .icon { font-size: 19px; }
+	nav button:hover { background: var(--panel2); color: var(--text); }
+	nav button.on { background: var(--accent-soft); color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 var(--blue); }
+	nav button.on .icon { color: var(--blue); font-variation-settings: "FILL" 1; }
+	nav .count { background: var(--blue); }
+	main { padding: 28px 36px 72px; max-width: 1240px; }
+	h1 { font-size: 26px; font-weight: 700; letter-spacing: -.015em; margin-bottom: 20px; }
+	h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 28px 0 12px; }
+	.box h2 { font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--text); margin-bottom: 12px; }
+	.cards { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+	.card { background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; position: relative; overflow: hidden; }
+	.card::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, var(--blue), transparent 70%); opacity: .7; }
+	.card span { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+	.card b { font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin-top: 6px; }
+	.box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+	.grid2 { gap: 14px; }
+	.chart { gap: 5px; height: 110px; }
+	.chart div { background: linear-gradient(180deg, var(--blue), rgba(76,157,255,.35)); border-radius: 5px 5px 2px 2px; transition: opacity .12s; }
+	.chart div:hover { opacity: .75; }
+	input, select, textarea { background: var(--bg); border-color: var(--line); border-radius: 10px; padding: 9px 12px; transition: border-color .12s; }
+	input:hover, select:hover, textarea:hover { border-color: #3a414c; }
+	input:focus, select:focus, textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--accent-soft); }
+	.btn { border-radius: 10px; font-weight: 600; padding: 8px 16px; transition: background .12s, border-color .12s, transform .06s; }
+	.btn:active { transform: translateY(1px); }
+	.btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+	.btn.primary:hover { background: #3d8cf0; }
+	.btn.danger:hover { background: rgba(244,33,46,.1); }
+	.table { border: 1px solid var(--line); border-radius: 14px; border-collapse: separate; border-spacing: 0; overflow: hidden; background: var(--panel); }
+	.table th { background: var(--panel2); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 10px 12px; }
+	.table td { padding: 10px 12px; border-bottom-color: var(--line); }
+	.table tr:last-child td { border-bottom: 0; }
+	.table tr.click:hover td { background: var(--panel2); }
+	.pill { font-weight: 600; padding: 2px 9px; background: var(--panel2); }
+	.pill.staff { background: var(--accent-soft); border-color: transparent; }
+	.notice { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); font-weight: 500; }
+	.ask { backdrop-filter: blur(3px); }
+	.ask .box { box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+	::-webkit-scrollbar { width: 10px; height: 10px; }
+	::-webkit-scrollbar-thumb { background: #2a3038; border-radius: 10px; border: 2px solid var(--bg); }
+	@media (max-width: 760px) {
+		.app { grid-template-columns: 1fr; }
+		nav { flex-direction: row; flex-wrap: wrap; align-items: center; height: auto; background: var(--panel); padding: 10px 12px; }
+		nav button { width: auto; padding: 7px 10px; font-size: 13.5px; }
+		nav button.on { box-shadow: none; }
+		main { padding: 18px 16px 64px; }
+		h1 { font-size: 22px; }
+		.cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+		.card { padding: 14px; }
+		.card b { font-size: 22px; }
+	}
 </style>
 </head>
 <body>
