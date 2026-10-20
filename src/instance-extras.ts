@@ -125,6 +125,22 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 		l.posts ? recentPosts() : Promise.resolve([]),
 	]);
 	const closed = s.signup_mode === "closed";
+	// an uploaded word mark (Admin > Settings, Logo and icons) stands in for the
+	// name; the shipped one is Xitter's, not this instance's, so then the name shows
+	const { brandingState } = await import("./branding");
+	const uploaded = brandingState();
+	const logo = uploaded["logo-dark"] || uploaded["logo-light"];
+	// with one theme's logo only, the page keeps to that theme, or a white mark
+	// would sit on a white page
+	const scheme = !logo || (uploaded["logo-dark"] && uploaded["logo-light"]) ? "auto" : uploaded["logo-dark"] ? "dark" : "light";
+	const heading = !logo
+		? `<h1>${esc(name)}</h1>`
+		: scheme === "auto"
+			? `<h1 class="mark"><picture><source srcset="/public/logo-light.png" media="(prefers-color-scheme: light)"><img class="logo" src="/public/logo-dark.png" alt="${esc(name)}"></picture></h1>`
+			: `<h1 class="mark"><img class="logo" src="/public/logo-${scheme}.png" alt="${esc(name)}"></h1>`;
+	const LIGHT = ":root { --bg: #fff; --fg: #0f1419; --dim: #536471; --line: #eff3f4; --card: #f7f9f9; }";
+	const lightCss = scheme === "light" ? LIGHT : scheme === "auto" ? `@media (prefers-color-scheme: light) { ${LIGHT} }` : "";
+	const description = l.tagline || [...l.about].slice(0, 200).join("") || `${name}, a place to post`;
 	const about = l.about.trim() ? l.about.trim().split(/\n\s*\n/).map((p) => `<p>${esc(p)}</p>`).join("") : "";
 	// signed out, media isn't served, so a letter stands in for the avatar
 	const hue = (h: string) => [...h].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 360, 7);
@@ -133,7 +149,7 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 				.map(
 					(p: any) => `<article>
 		<span class="av" aria-hidden="true" style="background:hsl(${hue(p.screen_name)} 55% 42%)">${esc([...String(p.name || p.screen_name)][0]?.toUpperCase() ?? "?")}</span>
-		<div><div class="who"><b>${esc(p.name || p.screen_name)}</b> <span>@${esc(p.screen_name)} · ${esc(when(p.created_at))}</span></div>
+		<div><div class="who"><b>${esc(p.name || p.screen_name)}</b> <span>@${esc(p.screen_name)} · <time datetime="${new Date(p.created_at).toISOString()}">${esc(when(p.created_at))}</time></span></div>
 		<p>${esc([...String(p.text)].slice(0, 280).join(""))}</p></div>
 	</article>`,
 				)
@@ -145,16 +161,27 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(name)}</title>
-<meta name="description" content="${esc(l.tagline || `${name}, a Xitter instance`)}">
+<meta name="description" content="${esc(description)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${esc(name)}">
+<meta property="og:title" content="${esc(name)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:url" content="${esc(PUBLIC_ORIGIN)}/">
+<meta property="og:image" content="${esc(PUBLIC_ORIGIN)}/public/app-icon.png">
+<meta name="twitter:card" content="summary">
+${scheme === "auto" ? `<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">` : `<meta name="theme-color" content="${scheme === "dark" ? "#000000" : "#ffffff"}">`}
+<link rel="apple-touch-icon" href="/public/app-icon.png">
 <link rel="icon" type="image/png" href="/public/favicon.png">
 <style>
 	:root { --bg: #000; --fg: #e7e9ea; --dim: #71767b; --line: #2f3336; --card: #16181c; --accent: #1d9bf0; }
-	@media (prefers-color-scheme: light) { :root { --bg: #fff; --fg: #0f1419; --dim: #536471; --line: #eff3f4; --card: #f7f9f9; } }
+	${lightCss}
 	* { box-sizing: border-box; }
 	body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 TwitterChirp, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 	main { max-width: 1040px; margin: 0 auto; padding: 48px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; }
 	@media (max-width: 800px) { main { grid-template-columns: 1fr; gap: 32px; padding-top: 32px; } }
-	.logo { max-width: 220px; max-height: 64px; display: block; margin-bottom: 28px; }
+	.mark { margin: 0 0 24px; line-height: 0; }
+	.logo { max-width: min(320px, 100%); max-height: 96px; display: block; }
 	h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; font-weight: 800; margin: 0 0 16px; letter-spacing: -.02em; }
 	.tag { font-size: 20px; color: var(--dim); margin: 0 0 20px; }
 	.about p { margin: 0 0 12px; white-space: pre-wrap; }
@@ -178,8 +205,7 @@ export async function landingPage(req: Request, url: URL): Promise<Response | un
 <body>
 <main>
 	<div>
-		<img class="logo" src="/public/logo-dark.png" alt="${esc(name)}" onerror="this.remove()">
-		<h1>${esc(name)}</h1>
+		${heading}
 		${l.tagline ? `<p class="tag">${esc(l.tagline)}</p>` : ""}
 		${about ? `<div class="about">${about}</div>` : ""}
 		<p class="stats"><b>${stats.accounts.toLocaleString("en-US")}</b> ${stats.accounts === 1 ? "account" : "accounts"} · <b>${stats.week.toLocaleString("en-US")}</b> ${stats.week === 1 ? "post" : "posts"} this week</p>
