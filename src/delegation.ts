@@ -61,7 +61,12 @@ const ANALYTICS_OPS = /^(accountOverview|activeFollowersTile|useFetchAnalytics|c
 // key backup's token), so they are refused by where they live, not by name;
 // these few tell nothing about the account's messages.
 const CHAT_HARMLESS = new Set(["viewerQuery", "useDirectCallSetupQuery", "GetExternalAppIntegrationsQuery"]);
+// this instance only, not upstream: an Admin edits the shared account's
+// profile (name, bio, location, website, avatar, banner, pronouns, flag); its
+// handle, sign-in and settings stay the owner's
+const DELEGATE_PROFILE = /^\/1\.1\/account\/(update_profile|update_profile_image|update_profile_banner|remove_profile_banner|update_pronouns|update_flag)\.json$/;
 export function delegateMay(role: Role, method: string, path: string, operation: string | undefined): boolean {
+	if (role === "Admin" && method === "POST" && !operation && DELEGATE_PROFILE.test(path)) return true;
 	if (operation && Object.hasOwn(chatHandlers, operation) && !CHAT_HARMLESS.has(operation)) return false;
 	if (operation && role !== "Admin" && ANALYTICS_OPS.test(operation)) return false;
 	if (operation) return method === "GET" ? !DELEGATE_PRIVATE_READS.test(operation) : !DELEGATE_DENIED_OPS.test(operation);
