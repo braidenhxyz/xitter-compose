@@ -47,6 +47,8 @@ export const RULES = {
 	mail: { limit: 5, window: 60 * MIN },
 	federation: { limit: 30_000, window: 15 * MIN },
 	translate: { limit: 150, window: 15 * MIN },
+	// calls an instance importing an account makes with its migration code (migration.ts)
+	migration: { limit: 20_000, window: 15 * MIN },
 } satisfies Record<string, Rule>;
 
 export type Bucket = keyof typeof RULES;
