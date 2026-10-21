@@ -1,6 +1,6 @@
 # Instances
 
-Generated from [instances.json](instances.json), sequence 13. Edit that file, then run
+Generated from [instances.json](instances.json), sequence 14. Edit that file, then run
 `bun scripts/check-instances.ts --write-md` to update this one.
 
 | Instance | Name | State | Key | Source |
@@ -14,6 +14,7 @@ Generated from [instances.json](instances.json), sequence 13. Edit that file, th
 | [x12.area12.lol](https://x12.area12.lol) | X12 | federating | `BxDn6ty57Wbfp6R8fEk8cGxO8ucUDNfGDiDanyIvUs8` |  |
 | [xitt.flex.pm](https://xitt.flex.pm) | Xittor | federating | `954Dw1wqqWqe4XIXEaMx9wmUUBRiChbbl_vPzahgxfY` | [code](https://github.com/FlexKleks/xitter) |
 | [xitter.opuadm.com](https://xitter.opuadm.com) | Xitter | federating | `FDWBt_uXkSyKKyM2J_9bYLfryG5N0bHFseMprag-Qv8` | [code](https://github.com/Xittered/xitter) |
+| [xitter.plunkinator.org](https://xitter.plunkinator.org) | Xitter | federating | `ovmWzg0FxZlqKk8oaBL6hjK-XGAhUFuh_JnAsW9M8ng` | [code](https://github.com/Xittered/xitter) |
 | [xitter.space](https://xitter.space) | Xit | federating | `C_9Cz5GkJjtSvWngLyVhfSTscLdcYo6Omx_EpSzQU5w` | [code](https://github.com/Xittered/xitter) |
 | [xt.iambrdn.com](https://xt.iambrdn.com) | xt.brdn | federating | `eiI4EMp0bupFbJ7EKy5A_MIo_yvhRMbljYSnzozwXIY` | [code](https://github.com/braidenhxyz/xitter-compose) |
 

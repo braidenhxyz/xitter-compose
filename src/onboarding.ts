@@ -14,7 +14,8 @@
 import { signInCookies } from "./accounts";
 import { loadLook, nightModeCookies } from "./themes/api";
 import { login, startSession } from "./auth";
-import { answerChallenge, startChallenge } from "./two-factor";
+import { answerChallenge } from "./two-factor";
+import { byEmail, passwordStep } from "./password-sign-in";
 import { sql } from "./db";
 import { type Message, encode, mapStrings, nameId } from "./jetfuel";
 import { fromJson } from "./jetfuel-json";
@@ -24,7 +25,7 @@ import { platformSource } from "./platforms";
 import { mailEnabled } from "./mail";
 import { checkSignupCode, sendSignupCode } from "./email-address";
 import { settings } from "./settings";
-import { hit, used } from "./ratelimit";
+import { hit } from "./ratelimit";
 import { requestCountry, requestIp } from "./login-history";
 
 async function appendSignIn(headers: Headers, req: Request, session: { token: string; csrf: string; userId: string }) {
@@ -32,7 +33,11 @@ async function appendSignIn(headers: Headers, req: Request, session: { token: st
 	for (const c of nightModeCookies(await loadLook(session.userId))) headers.append("set-cookie", c);
 }
 
-const load = async (name: string): Promise<Message[]> => fromJson(await Bun.file(new URL(`./jf/${name}.json`, import.meta.url)).json());
+// X's name field drops everything outside a-z, 0-9 and a few marks as it is
+// typed; staff-set handles can hold any symbol, so let it all through
+const X_NAME_PATTERN = "^[a-zA-Z0-9@._+\\-]+$";
+const load = async (name: string): Promise<Message[]> =>
+	mapStrings(fromJson(await Bun.file(new URL(`./jf/${name}.json`, import.meta.url)).json()), (s) => (s === X_NAME_PATTERN ? "^\\S+$" : s));
 // Takes out of a screen the parts that hold any of these texts. With `part` (a
 // button is 7140) the nearest element of that type goes; otherwise the branch
 // that sits beside the username field, i.e. the child of the nearest element
@@ -158,6 +163,10 @@ const TEXTS: Record<string, () => string> = {
 	"Choose a name, username, and password.": () => `Welcome to ${settings().instance_name}. Choose a name, username, and password.`,
 };
 
+// Sign-in by email as well as by handle: staff can give an account a handle
+// with characters the dialog's field won't take. One local account per
+// address, or none.
+
 // sign-up's emailed code, on the same six-box screen
 const emailCodeTexts = (email: string): Record<string, string> => ({
 	"We sent you a security code": "We sent you a code",
@@ -253,6 +262,8 @@ export async function onboarding(req: Request, path: string): Promise<Response |
 		const name = String(f.username_or_email ?? "").trim().replace(/^@/, "");
 		const [user] = name ? await sql`select screen_name from users where lower(screen_name) = lower(${name}) and instance is null and status <> 'suspended'` : [];
 		if (user) return respond(signInScreen(user.screen_name));
+		// the password screen keeps the address: its field may not hold the handle
+		if ((await byEmail(name)) !== undefined) return respond(signInScreen(name));
 		const mode = settings().signup_mode;
 		if (mode === "closed") return respond(fieldError("username_or_email", "No account goes by that name."));
 		const problem = usernameProblem(name);
@@ -362,18 +373,10 @@ export async function onboarding(req: Request, path: string): Promise<Response |
 	}
 	if (path === "/onboarding/web/actions/login_enter_password") {
 		const f = await form(req);
-		const username = String(f.username ?? "").trim().replace(/^@/, "");
-		// guessing one account's password from many addresses still runs out;
-		// only wrong passwords count, so signing in on several devices doesn't
-		const account = username.toLowerCase();
-		if (username && used("password", account)) return respond(fieldError("password", "Too many tries for this account. Wait 15 minutes."));
-		const challenge = username && f.password ? await startChallenge(username, f.password) : undefined;
-		if (challenge) return respond(fill(templates.twoFactor, { session_token: challenge }, TWO_FACTOR_TEXTS));
-		const session = username && f.password ? await login(username, f.password) : undefined;
-		if (!session) {
-			if (username) hit("password", account);
-			return respond(fieldError("password", "Wrong username or password."));
-		}
+		const step = await passwordStep(String(f.username ?? ""), String(f.password ?? ""));
+		if ("challenge" in step) return respond(fill(templates.twoFactor, { session_token: step.challenge }, TWO_FACTOR_TEXTS));
+		if ("error" in step) return respond(fieldError("password", step.error));
+		const { session } = step;
 		const [user] = await sql`select screen_name from users where id = ${session.userId}::bigint`;
 		const headers = new Headers();
 		await appendSignIn(headers, req, session);

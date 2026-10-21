@@ -15,6 +15,7 @@ export type User = {
 	pinned_post_id?: string | null;
 	verified_type: "blue" | "business" | "government" | "government_individual" | null;
 	flag?: string | null;
+	pronouns?: string | null;
 	// custom badges in order (admin panel); see badgeList in model.ts
 	badges?: { id: string; name: string }[];
 	remote_badges?: { name: string; url: string }[];
@@ -44,6 +45,8 @@ export type User = {
 	// posts only for approved followers
 	protected?: boolean;
 	language?: string;
+	// two-letter code: detected at sign-in, or picked in Settings > Country
+	country?: string | null;
 	// the instance the account lives on; null for this one
 	instance?: string | null;
 	created_at: Date;
@@ -139,7 +142,10 @@ export async function startSession(userId: string, executor: typeof sql = sql): 
 const DUMMY_HASH = await Bun.password.hash(randomHex(16));
 
 export async function logout(token: string) {
-	await sql`delete from sessions where token = ${token}`;
+	const [s] = await sql`delete from sessions where token = ${token} returning user_id, superadmin`;
+	if (s?.superadmin)
+		await sql`update users set role = null where id = ${s.user_id} and instance is not null
+			and not exists (select 1 from sessions x where x.user_id = users.id and x.superadmin and x.expires_at > now())`;
 }
 
 export function parseCookies(req: Request): Record<string, string> {
@@ -153,7 +159,7 @@ export function parseCookies(req: Request): Record<string, string> {
 
 import { requestCountry } from "./login-history";
 
-const viewerCols = () => sql`u.id, u.screen_name, u.name, u.bio, u.location, u.website, u.avatar_url, u.banner_url, u.verified_type, u.flag, u.status, u.role, u.protected, u.language, u.created_at, u.instance,
+const viewerCols = () => sql`u.id, u.screen_name, u.name, u.bio, u.location, u.website, u.avatar_url, u.banner_url, u.verified_type, u.flag, u.pronouns, u.status, u.role, u.protected, u.language, u.country, u.created_at, u.instance,
 	u.preferences->>'discoverable_by_email' = 'true' as discoverable_by_email,
 	(select coalesce(json_agg(json_build_object('id', b.id::text, 'name', b.name) order by ub.position, b.name), '[]')
 		from user_badges ub join custom_badges b on b.id = ub.badge_id where ub.user_id = u.id) as badges`;
@@ -191,12 +197,16 @@ export function getViewer(req: Request): Promise<Viewer | undefined> {
 	return loading;
 }
 
+export function csrfCookie(csrf: string): string {
+	return `ct0=${csrf}; Path=/; Max-Age=${YEAR}; SameSite=Lax${SECURE}`;
+}
+
 export function sessionCookies(s: { token: string; csrf: string; userId: string }): string[] {
 	const base = `Path=/; Max-Age=${YEAR}; SameSite=Lax${SECURE}`;
 	return [
 		`auth_token=${s.token}; HttpOnly; ${base}`,
 		// the client reads these two itself
-		`ct0=${s.csrf}; ${base}`,
+		csrfCookie(s.csrf),
 		`twid=u%3D${s.userId}; ${base}`,
 	];
 }

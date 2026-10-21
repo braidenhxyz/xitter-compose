@@ -19,4 +19,6 @@ export function newId(): string {
 export const isId = (v: unknown): v is string => typeof v === "string" && /^\d{1,19}$/.test(v) && BigInt(v) <= 9223372036854775807n;
 
 // when an id was made
+export const idAt = (ms: number) => ((BigInt(ms) - EPOCH) << 22n).toString();
+
 export const idTime = (id: string) => new Date(Number((BigInt(id) >> 22n) + EPOCH));
