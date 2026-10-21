@@ -38,13 +38,17 @@ export const extrasActions: Record<string, Action> = {
 			const owner = await instanceOwner();
 			const [o] = owner ? await sql`select screen_name from users where id = ${owner}::bigint` : [];
 			const admins = a.id === owner ? await sql`select id::text, screen_name from users where role = 'admin' and instance is null and id <> ${a.id}::bigint order by screen_name` : [];
-			return { extras: extras(), owner: { you: a.id === owner, screen_name: o?.screen_name ?? null }, admins };
+			// a Discord webhook address lets anyone post as it: the owner's alone
+			const x = extras();
+			const shown = a.id === owner ? x : { ...x, digest: { ...x.digest, url: x.digest.url ? "set" : "" } };
+			return { extras: shown, owner: { you: a.id === owner, screen_name: o?.screen_name ?? null }, admins };
 		},
 	},
 	// the digest now, to check the webhook
 	testDigest: {
 		role: "admin",
 		run: async (a, b) => {
+			await ownerOnly(a);
 			const url = typeof b.url === "string" && b.url.trim() ? b.url.trim() : extras().digest.url;
 			try {
 				await sendDigest(url);
@@ -99,7 +103,10 @@ export const extrasActions: Record<string, Action> = {
 			if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new AdminError("The digest hour is 0 to 23 (UTC).");
 			const digestUrl = text(g.url, 500).trim();
 			if (digestUrl && !/^https?:\/\/\S+$/.test(digestUrl)) throw new AdminError("The digest webhook is an http or https address.");
-			const digest = { url: digestUrl, hour, last: extras().digest.last };
+			// the server fetches this address, so only the owner sets it: an admin
+			// could otherwise use it to probe the server's own network
+			const isOwner = a.id === (await instanceOwner());
+			const digest = isOwner ? { url: digestUrl, hour, last: extras().digest.last } : extras().digest;
 			if (welcome.from && !(await sql`select 1 from users where lower(screen_name) = ${welcome.from.toLowerCase()} and instance is null and role is not null`).length)
 				throw new AdminError(`@${welcome.from} isn't a staff account here.`);
 			await saveExtra("welcome", welcome);

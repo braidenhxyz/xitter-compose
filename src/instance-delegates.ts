@@ -6,9 +6,9 @@
 // own session, no switching needed.
 //
 // The same rules as the account's own editor (rest.ts profileRoute): lengths,
-// automod (a hit is a strike on the account, as if it had written it), blocked
-// words and phrases, which are refused here rather than suspending the account
-// for its delegate's typing. Each save is in the audit log under the delegate.
+// automod (a hit is a strike on the delegate, who typed it), blocked words and
+// phrases (refused here, never suspending the account for its delegate's
+// typing). Each save is in the audit log under the delegate.
 // The handle, sign-in, settings and messages stay the owner's.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -144,7 +144,9 @@ export async function manageRoute(req: Request, url: URL, viewer: Viewer): Promi
 		if ([...v].length > limits[k]) return editor(req, viewer, { ...u, ...values }, problem(`The ${k} is limited to ${limits[k]} characters.`));
 		const hate = k === "name" ? hateInName(v) : hateIn(v);
 		if (hate) {
-			await automodStrike(u.id, hate, k === "name" ? "name" : "profile", v);
+			// the strike is the delegate's: they wrote it, and the account shouldn't
+			// be suspended for what someone it trusted typed
+			await automodStrike(viewer.id, hate, k === "name" ? "name" : "profile", v);
 			return editor(req, viewer, { ...u, ...values }, problem("That contains a slur or hate speech this instance doesn't allow."));
 		}
 		if (k === "name" ? blockedNameIn(v) : blockedWordIn(v)) return editor(req, viewer, { ...u, ...values }, problem(`The ${k} contains a word this instance doesn't allow.`));

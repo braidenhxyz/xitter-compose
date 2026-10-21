@@ -1363,10 +1363,12 @@ RENDER.extras = async function (main) {
 		'<p class="dim small">"Show more" searches filter:local, which also works in the search box.</p></div>' +
 		'<div class="box"><h2>Stats page</h2>' + check("xsOn", x.stats?.enabled !== false, "Open /stats to everyone: accounts, posts, hashtags and connected instances") +
 		'<p class="dim small"><a href="/stats" target="_blank">Open it</a>. The landing page links to it while it\'s on.</p></div>' +
-		'<div class="box"><h2>Daily digest</h2><p class="dim small">Once a day: sign-ups, posts, open reports and errors, imports waiting and storage. Paste a Discord webhook, an ntfy topic (https://ntfy.sh/your-topic) or any address that takes a JSON post.</p>' +
-		'<div class="field"><label>Webhook</label><input id="xdUrl" placeholder="https://discord.com/api/webhooks/…" value="' + esc(x.digest?.url || "") + '"></div>' +
-		'<div class="field"><label>Hour to send (UTC, 0 to 23)</label><input id="xdHour" type="number" min="0" max="23" value="' + esc(String(x.digest?.hour ?? 9)) + '"></div>' +
-		'<button class="btn" id="xdTest" type="button">Send one now</button></div>' +
+		(owner.you
+			? '<div class="box"><h2>Daily digest</h2><p class="dim small">Once a day: sign-ups, posts, open reports and errors, imports waiting and storage. Paste a Discord webhook, an ntfy topic (https://ntfy.sh/your-topic) or any address that takes a JSON post. Only you, the owner, can set it.</p>' +
+				'<div class="field"><label>Webhook</label><input id="xdUrl" placeholder="https://discord.com/api/webhooks/…" value="' + esc(x.digest?.url || "") + '"></div>' +
+				'<div class="field"><label>Hour to send (UTC, 0 to 23)</label><input id="xdHour" type="number" min="0" max="23" value="' + esc(String(x.digest?.hour ?? 9)) + '"></div>' +
+				'<button class="btn" id="xdTest" type="button">Send one now</button></div>'
+			: '<div class="box"><h2>Daily digest</h2><p class="dim small">' + (x.digest?.url ? "On, sent to the owner's webhook." : "Off.") + " Only the instance owner sets it.</p></div>") +
 		'<div class="box"><h2>Shared links</h2>' + check("xpOn", x.public_pages?.enabled !== false, "Let people who aren't signed in read a post or profile someone sent them a link to") +
 		'<p class="dim small">Only what a public account shows: no protected, suspended or hidden accounts and posts, no community posts, no media marked sensitive. Search engines are asked not to index these pages.</p></div>' +
 		'</div><button class="btn primary" id="xSave" style="margin-top:12px">Save</button>' +
@@ -1386,12 +1388,12 @@ RENDER.extras = async function (main) {
 	$("#xSave").onclick = () => act(() => api("saveExtras", {
 		welcome: { enabled: $("#xwOn").checked, from: $("#xwFrom").value, text: $("#xwText").value },
 		landing: { enabled: $("#xlOn").checked, tagline: $("#xlTag").value, about: $("#xlAbout").value, posts: $("#xlPosts").checked, featured: $("#xlFeat").value },
-		digest: { url: $("#xdUrl").value, hour: Number($("#xdHour").value) },
+		...($("#xdUrl") ? { digest: { url: $("#xdUrl").value, hour: Number($("#xdHour").value) } } : {}),
 		local_explore: { enabled: $("#xeOn").checked },
 		stats: { enabled: $("#xsOn").checked },
 		public_pages: { enabled: $("#xpOn").checked },
 	}), "Saved").then(route);
-	$("#xdTest").onclick = () => act(() => api("testDigest", { url: $("#xdUrl").value }), "Digest sent");
+	if ($("#xdTest")) $("#xdTest").onclick = () => act(() => api("testDigest", { url: $("#xdUrl").value }), "Digest sent");
 	if (!owner.you) return;
 	$("#ojDate").max = new Date().toISOString().slice(0, 10);
 	$("#ojSave").onclick = () => act(async () => {

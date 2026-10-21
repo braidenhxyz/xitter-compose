@@ -22,7 +22,8 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const FETCHER = /bot|crawl|spider|slurp|facebookexternalhit|embedly|iframely|discord|slack|telegram|whatsapp|mastodon|pleroma|misskey|akkoma|skype|linkedin|pinterest|vkshare|preview|google|bing|yandex|duckduck|curl|wget|python|go-http|okhttp/i;
 
 const PUBLIC_USER = sql`not u.protected and not u.instance_blocked and u.status in ('active', 'restricted') and u.deactivated_at is null`;
-const PUBLIC_POST = sql`not p.hidden and p.community_id is null`;
+// staff's "Visibility limited" (Fosnr) posts stay out, as they do from search
+const PUBLIC_POST = sql`not p.hidden and p.community_id is null and p.notice->>'type' is distinct from 'Fosnr'`;
 
 type Media = { id: string; kind: string; width: number; height: number };
 type Row = { id: string; text: string; created_at: Date; sensitive: boolean; reply_to_id: string | null; likes: number; reposts: number; replies: number;
@@ -320,7 +321,7 @@ ${o.image ? `<meta property="og:image" content="${esc(PUBLIC_ORIGIN + o.image)}"
 <body>
 <div class="layout">
 	<header class="left"><nav>
-		<a class="mark" href="/" title="${esc(name)}"><img src="/public/icon-dark.png" alt="${esc(name)}" onerror="this.replaceWith(document.createTextNode('${esc(name).replace(/'/g, "")}'))"></a>
+		<a class="mark" href="/" title="${esc(name)}"><img src="/public/icon-dark.png" alt="${esc(name)}"></a>
 		<a class="item" href="/?app=login">${icon("explore")}<span>Explore</span></a>
 	</nav></header>
 	<main class="col">
@@ -439,8 +440,18 @@ export async function publicView(req: Request, url: URL): Promise<Response | und
 	const p = url.pathname;
 	const file = /^\/p\/media\/(\d{1,19})(\/poster\.jpg)?$/.exec(p);
 	if (!extras().public_pages.enabled) return file ? new Response("not found", { status: 404 }) : undefined;
-	if (file) return mediaFile(req, file[1], !!file[2]);
+	// a limit per address: the pages run a few counting queries each (the
+	// endpoint bucket, 1000 a quarter hour); their pictures, several a page,
+	// only a lookup each (the read bucket, 6000)
+	const [{ hit, limitedResponse }, { requestIp }] = await Promise.all([import("./ratelimit"), import("./login-history")]);
+	const ip = requestIp(req) ?? "unknown";
+	if (file) {
+		const h = hit("read", `public-media:${ip}`);
+		return h.ok ? mediaFile(req, file[1], !!file[2]) : limitedResponse(h);
+	}
 	if (FETCHER.test(req.headers.get("user-agent") ?? "")) return undefined;
+	const h = hit("endpoint", `public-page:${ip}`);
+	if (!h.ok) return limitedResponse(h);
 	const status = /^\/([A-Za-z0-9_]{1,50})\/status\/(\d{1,19})(?:\/(?:photo|video)\/\d)?\/?$/.exec(p);
 	if (status) return isId(status[2]) ? postPage(status[2]) : undefined;
 	const profile = /^\/([A-Za-z0-9_]{1,50})\/?(?:with_replies|media)?\/?$/.exec(p)?.[1];
