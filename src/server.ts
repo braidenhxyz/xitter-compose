@@ -434,6 +434,8 @@ async function route(req: Request): Promise<Response | undefined> {
 	if (p === "/account/api" && viewer) return apiTokensRoute(req, viewer);
 	if (p === "/account/notes/appeals" && viewer) return noteAppealsRoute(req, viewer);
 	if (p === "/account/automation" && viewer) return automationRoute(req, viewer);
+	// this instance only: delegates edit the profiles they manage (instance-delegates.ts)
+	if ((p === "/account/manage" || p.startsWith("/account/manage/")) && viewer) return (await import("./instance-delegates")).manageRoute(req, url, viewer);
 	if (p === "/account/instances" && viewer) return instancesRoute(req, viewer);
 	if ((p === "/account/import" || p === "/account/import/upload") && viewer) return importRoute(req, url, viewer);
 	if (p === "/account/decoration" && viewer) return decorationRoute(req, viewer);
