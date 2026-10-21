@@ -472,8 +472,9 @@ export const DECOR_SCRIPT = String.raw`(function(){
 		if(!n&&current&&(document.querySelector('[aria-modal="true"]')||document.querySelector('[data-testid="primaryColumn"] [data-testid="UserName"]')))return;
 		if(!n){if(current)clearProfile();return}
 		var k=known[n];
+		if(current&&current!==n)clearProfile();
 		if(k===undefined){want(n);return}
-		if(!k||(!k.background&&!k.theme)){if(current)clearProfile();return}
+		if(!k||(!k.background&&!k.theme))return;
 		if(current===n)return;
 		clearProfile();current=n;
 		// X's own colour sits on the body inline: a viewer's theme paints over the
