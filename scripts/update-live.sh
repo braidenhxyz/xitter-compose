@@ -4,6 +4,8 @@
 # server file is build-checked, and live is pushed for the server to pull.
 # Stops at the first conflict and says where, leaving the merge to finish.
 #
+# Run it with live checked out (git checkout live): only live has it.
+#
 #   scripts/update-live.sh            merge, check, push live
 #   scripts/update-live.sh --no-push  merge and check only
 #
