@@ -51,8 +51,12 @@ export function hideCss(): string {
 	const off = (Object.keys(BY_FEATURE) as Feature[]).filter((f) => !feature(f)).flatMap((f) => BY_FEATURE[f]);
 	return `${[...ALWAYS, ...off].join(",")}{display:none!important}
 #xitter-announcement{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;background:var(--xt-accent-fill,var(--xt-accent,#1d9bf0));color:#fff;font:15px TwitterChirp,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-#xitter-announcement a{color:#fff;text-decoration:underline}
-#xitter-announcement span{flex:1;white-space:pre-wrap}
+#xitter-announcement .xa-body{flex:1;min-width:0;display:grid;gap:10px}
+#xitter-announcement .xa-text{white-space:pre-wrap;overflow-wrap:break-word}
+#xitter-announcement .xa-buttons{display:flex;flex-wrap:wrap;gap:8px}
+#xitter-announcement .xa-buttons a{display:inline-flex;align-items:center;min-height:32px;padding:0 14px;border-radius:8px;background:rgb(255 255 255 / .2);color:#fff;font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap;transition:background-color 120ms ease-out}
+#xitter-announcement .xa-buttons a:focus-visible{outline:2px solid #fff;outline-offset:2px}
+@media (hover:hover){#xitter-announcement .xa-buttons a:hover{background:rgb(255 255 255 / .3)}}
 #xitter-announcement button{border:0;background:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;padding:0 4px}`;
 }
 
@@ -111,7 +115,13 @@ export function tidyData(links: MenuLink[] = []) {
 		menuItems,
 		premium: feature("premium"),
 		imageGen: feature("image_gen"),
-		announcement: s.announcement.text ? s.announcement : null,
+		announcement: s.announcement.text
+			? {
+					id: s.announcement.id,
+					text: s.announcement.text,
+					buttons: s.announcement.buttons?.length ? s.announcement.buttons : s.announcement.link ? [{ label: "More", url: s.announcement.link }] : [],
+				}
+			: null,
 		instance: s.instance_name,
 		source: s.source_url,
 		links,
@@ -296,13 +306,22 @@ export const TIDY_SCRIPT = `(function(){
 		var bar=document.createElement("div");
 		bar.id="xitter-announcement";
 		bar.setAttribute("role","status");
-		var text=document.createElement("span");
-		text.textContent=A.text+" ";
-		if(A.link){var a=document.createElement("a");a.href=A.link;a.target="_blank";a.rel="noopener";a.textContent="More";text.appendChild(a);}
+		var body=document.createElement("div");
+		body.className="xa-body";
+		var text=document.createElement("div");
+		text.className="xa-text";
+		text.textContent=A.text;
+		body.appendChild(text);
+		if(A.buttons&&A.buttons.length){
+			var row=document.createElement("div");
+			row.className="xa-buttons";
+			A.buttons.forEach(function(b){var a=document.createElement("a");a.href=b.url;a.target="_blank";a.rel="noopener";a.textContent=b.label;row.appendChild(a)});
+			body.appendChild(row);
+		}
 		var x=document.createElement("button");
 		x.type="button";x.setAttribute("aria-label","Close");x.textContent="\\u00d7";
 		x.onclick=function(){closed=true;try{localStorage.setItem("xitter-announcement",A.id)}catch(e){}bar.remove();};
-		bar.appendChild(text);bar.appendChild(x);
+		bar.appendChild(body);bar.appendChild(x);
 		col.insertBefore(bar,col.firstChild);
 	}
 	// the side bar shows its labels (and our word mark) only when it is wide

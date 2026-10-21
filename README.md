@@ -66,6 +66,17 @@ copy during setup, and it stays on that machine.
 - Branded hashtags (X's branded likes and hashmoji, Admin > Branded
   hashtags): for a set time, liking a post with the hashtag plays a custom
   Lottie animation, and the hashtag shows an emoji (optionally with hashfetti)
+- Conversation cards: the composer’s conversation-card icon adds up to four hashtag buttons
+  with prefilled post text, a title and an optional thank-you message, destination
+  URL and display URL to one image, GIF or video. The editor previews the attached media, title and buttons
+  together; its crop control opens the client’s image editor for still images.
+  Published cards use the client’s native image/video conversation-card design.
+  Each button opens an editable post carrying the original card; hashtag fields
+  add the # prefix automatically. Post text is optional, including the prefilled
+  text for each choice (which defaults to its hashtag). Drafts and scheduled
+  posts preserve card settings and media. Incomplete cards can be saved as drafts;
+  scheduling requires a valid card with one finished upload. Empty-text card
+  shares include the title and hashtags when federation is enabled.
 - Import from X (off by default; Admin > Settings, feature switches, then
   Settings > Your account > Import from X): upload the archive x.com makes
   (up to `ARCHIVE_MAX_MB`, default 1024) and its posts, threads, photos,
@@ -78,6 +89,9 @@ copy during setup, and it stays on that machine.
   week old can import, and staff approve each import first (Admin > Settings,
   Import from X)
 - Polls with a photo on each choice
+- YouTube links (videos, Shorts, live, youtu.be, with `t=` start times) become
+  player cards: the thumbnail comes through `EMBED_PROXY`, and pressing play
+  loads the video in place from youtube-nocookie.com
 - Previews when a public post or profile is shared in other apps (Discord,
   Slack, iMessage…): OpenGraph and Twitter card tags and oEmbed, for active,
   unprotected accounts only. Admin > Settings > Features switches them off
@@ -98,7 +112,10 @@ copy during setup, and it stays on that machine.
 - Connected apps: developers register a public client at `/account/apps/developer`,
   users approve read or read-and-write access with OAuth 2 authorization code
   and mandatory PKCE, and revoke access at `/account/apps`. Tokens expire after
-  30 days; `/api` documents the flow.
+  30 days; `/api` documents the flow. Apps can skip registering on each
+  instance by using the URL of a client ID metadata document as their
+  `client_id`, so one app signs in with one tap on every Xitter
+  (`/.well-known/oauth-authorization-server` advertises it).
 - An admin panel at `/admin`: users, standing (restrict, limit, suspend),
   badges (blue, gold organisation, grey government organisation or official),
   translator globes (blue translator, gold translator moderator, yellow approver),
@@ -364,6 +381,9 @@ expiry, write paths and request limits against one.
   validation without a running server. `bun scripts/test-juicebox.ts` verifies
   realm registration and recovery; run it with `recover` after a realm/database
   restart to check durability (`TEST_JUICEBOX_URL` selects the realm).
+- `bun scripts/test-conversation-live.ts public/logo-light.png` verifies conversation
+  card uploads, publication, native previews, sharing and JSON storage against a
+  running server and database. It creates and removes its own test account.
 - Other checks: `test-account-settings`, `test-two-factor`, `test-password-reset`,
   `test-reply-limits`, `test-views`, `test-protected`, `test-communities`, `test-lists`,
   `test-polls`, `test-scheduled` and the rest of `scripts/test-*.ts`. A passing
@@ -373,6 +393,18 @@ expiry, write paths and request limits against one.
 - `bun scripts/drive.ts <path> <steps...>` clicks through the real client in
   headless Edge and takes screenshots (uses the browser profile
   `scripts/probe.sh` leaves signed in).
+
+## Donate
+
+If Xitter is useful to you, crypto donations keep the main instance running.
+Send only the coin on the network listed for each address.
+
+| Coin | Network | Address |
+| --- | --- | --- |
+| SOL | Solana | `5nmzmrxFrvacVuQhNPVFJzbbkAgRMefWsWmPSoft1cJF` |
+| BTC | Bitcoin | `bc1qj2kedn4kqavwg2r5z5n4cldtx09gy2recswak9` |
+| ETH | Ethereum | `0x5A7cFbf7F877BE5b6DB4aE248178761E68129881` |
+| USDT | Tron (TRC20) | `THvC2xDHpF8Yr9s6jhHCXYGDya9ZnvjG79` |
 
 ## License
 
